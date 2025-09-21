@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: pmbot-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - CORS_ORIGINS=http://localhost:3000,*
+    networks:
+      - pmbot_net
+
+  frontend:
+    build:
+      context: ./frontend      # <— points to the folder you created
+      dockerfile: Dockerfile   # <— uses the Dockerfile you just added
+    container_name: pmbot-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_BASE=http://localhost:8000
+      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - pmbot_net
+
+networks:
+  pmbot_net:
+    driver: bridge
