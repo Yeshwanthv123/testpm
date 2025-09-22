@@ -1,17 +1,40 @@
-from sqlalchemy import String, Integer, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
-from .db import Base
+    # backend/app/models.py
 
-class User(Base):
-    __tablename__ = "users"
+import sqlalchemy
+from .db import metadata
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    full_name: Mapped[str] = mapped_column(String(255), nullable=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped["DateTime"] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # --- ADD THESE NEW FIELDS ---
-    current_role: Mapped[str] = mapped_column(String(255), nullable=True)
-    experience: Mapped[str] = mapped_column(String(50), nullable=True)
-    region: Mapped[str] = mapped_column(String(100), nullable=True)
+User = sqlalchemy.Table(
+    "users",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("email", sqlalchemy.String, unique=True, index=True),
+    sqlalchemy.Column("hashed_password", sqlalchemy.String),
+    sqlalchemy.Column("full_name", sqlalchemy.String),
+    sqlalchemy.Column("is_active", sqlalchemy.Boolean, default=True),
+    sqlalchemy.Column("onboarding_complete", sqlalchemy.Boolean, default=False),
+)
+
+
+InterviewSession = sqlalchemy.Table(
+    "interview_sessions",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("user_id", sqlalchemy.ForeignKey("users.id")),
+    sqlalchemy.Column("session_date", sqlalchemy.DateTime),
+    sqlalchemy.Column("score", sqlalchemy.Float),
+    # Add other relevant fields
+)
+
+# +++ Add the following new code +++
+Question = sqlalchemy.Table(
+    "questions",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("text", sqlalchemy.String, nullable=False),
+    sqlalchemy.Column("company", sqlalchemy.String, index=True),
+    sqlalchemy.Column("category", sqlalchemy.String),
+    sqlalchemy.Column("complexity", sqlalchemy.String),
+    sqlalchemy.Column("experience_level", sqlalchemy.String),
+)
+# +++ End of new code +++

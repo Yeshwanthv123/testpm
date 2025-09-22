@@ -14,12 +14,11 @@ export interface Question {
   category: string;
   question: string;
   followUpQuestions?: string[];
-  timeLimit: number;
+  timeLimit: number; // in seconds
   difficulty: 'easy' | 'medium' | 'hard';
   skills: string[];
 }
 
-// ... (rest of the file is unchanged)
 export interface InterviewSession {
   id: string;
   userId: string;
@@ -33,8 +32,8 @@ export interface InterviewSession {
 
 export interface Answer {
   questionId: string;
-  answer: string;
-  timeSpent: number;
+  answer: string; // Can be text or a URL to a voice file
+  timeSpent: number; // in seconds
   timestamp: Date;
   isVoiceAnswer?: boolean;
 }
@@ -80,7 +79,7 @@ export interface InterviewType {
   name: string;
   company?: string;
   description: string;
-  duration: number;
+  duration: number; // in minutes
   questionCount: number;
   skills: string[];
   icon: string;

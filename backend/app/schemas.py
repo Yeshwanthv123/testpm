@@ -1,39 +1,43 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+# backend/app/schemas.py
 
-class UserCreate(BaseModel):
+from pantic import BaseModel, EmailStr
+from typing import Optional, List
+
+class UserBase(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6, max_length=128)
     full_name: Optional[str] = None
 
-class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    # --- ADD THESE NEW FIELDS ---
-    current_role: Optional[str] = None
-    experience: Optional[str] = None
-    region: Optional[str] = None
+class UserCreate(UserBase):
+    password: str
 
-class UserOut(BaseModel):
+class UserInDB(UserBase):
     id: int
-    email: EmailStr
-    full_name: Optional[str] = None
-    # --- ADD THESE NEW FIELDS ---
-    current_role: Optional[str] = None
-    experience: Optional[str] = None
-    region: Optional[str] = None
+    onboarding_complete: bool
 
     class Config:
         from_attributes = True
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-class TokenPair(BaseModel):
+class Token(BaseModel):
     access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
+    token_type: str
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class Message(BaseModel):
+    message: str
+
+# +++ Add the following new code +++
+class QuestionBase(BaseModel):
+    text: str
+    company: Optional[str] = None
+    category: Optional[str] = None
+    complexity: Optional[str] = None
+    experience_level: Optional[str] = None
+
+class QuestionInDB(QuestionBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+# +++ End of new code +++
