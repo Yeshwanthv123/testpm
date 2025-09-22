@@ -1,6 +1,6 @@
 export interface User {
   id: string;
-  name: string;
+  full_name: string; // Changed from 'name' to 'full_name'
   email: string;
   experience: string;
   targetCompanies: string[];
@@ -19,6 +19,7 @@ export interface Question {
   skills: string[];
 }
 
+// ... (rest of the file is unchanged)
 export interface InterviewSession {
   id: string;
   userId: string;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import LoginSignup from './components/LoginSignup';
 import Onboarding from './components/Onboarding';
@@ -11,17 +11,51 @@ import { calculateSkillScore, generateFeedback, calculatePercentile } from './ut
 
 type AppStep = 'login' | 'onboarding' | 'setup' | 'interview' | 'results';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+
 function App() {
   const [currentStep, setCurrentStep] = useState<AppStep>('login');
   const [user, setUser] = useState<User | null>(null);
   const [selectedInterviewType, setSelectedInterviewType] = useState<InterviewType | null>(null);
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
   const [jobDescription, setJobDescription] = useState<string | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        try {
+          const response = await fetch(`${API_BASE}/auth/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+            const userData = await response.json();
+            handleLoginComplete(userData);
+          } else {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+          }
+        } catch (error) {
+          console.error("Failed to verify auth status", error);
+        }
+      }
+      setIsLoading(false);
+    };
+    checkAuthStatus();
+  }, []);
 
   const handleLoginComplete = (userData: User) => {
     setUser(userData);
-    // ALWAYS go to onboarding after login, regardless of login method
-    setCurrentStep('onboarding');
+    if (!userData.experience || !userData.currentRole || !userData.region) {
+      setCurrentStep('onboarding');
+    } else {
+      setCurrentStep('setup');
+    }
+  };
+  
+  const handleUpdateUser = (updatedUser: User) => {
+    setUser(updatedUser);
   };
 
   const handleOnboardingComplete = (userData: User) => {
@@ -37,32 +71,20 @@ function App() {
 
   const handleInterviewComplete = (answers: Answer[]) => {
     if (!selectedInterviewType) return;
-
-    // Mock skill evaluation - in real app, this would use AI
     const skillScores: SkillScore[] = mockSkillScores.map(mockScore => ({
       ...mockScore,
       feedback: generateFeedback(mockScore.score, mockScore.skill),
       percentile: calculatePercentile(mockScore.score, mockScore.skill)
     }));
-
     const result: InterviewResult = {
       sessionId: Date.now().toString(),
       overallScore: Math.round(skillScores.reduce((sum, skill) => sum + skill.score, 0) / skillScores.length),
       skillScores,
-      strengths: [
-        'Excellent strategic thinking and framework application',
-        'Strong execution mindset with practical solutions',
-        'Clear communication and structured responses'
-      ],
-      improvements: [
-        'Expand on stakeholder management strategies',
-        'Include more quantitative analysis in responses',
-        'Develop deeper technical architecture understanding'
-      ],
+      strengths: ['Strength 1', 'Strength 2'],
+      improvements: ['Improvement 1', 'Improvement 2'],
       peerComparison: mockPeerComparison,
-      detailedFeedback: 'Overall strong performance with clear product thinking and good communication skills.'
+      detailedFeedback: 'Good job!'
     };
-
     setInterviewResult(result);
     setCurrentStep('results');
   };
@@ -75,48 +97,33 @@ function App() {
   };
 
   const handleNavigate = (step: string) => {
-    // Validate navigation - users can only go back to previous steps or current step
-    const stepOrder: AppStep[] = ['login', 'onboarding', 'setup', 'interview', 'results'];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    const targetIndex = stepOrder.indexOf(step as AppStep);
-    
-    // Allow navigation to previous steps, current step, or next step if conditions are met
-    if (targetIndex <= currentIndex || (targetIndex === currentIndex + 1 && canProceedToStep(step as AppStep))) {
-      setCurrentStep(step as AppStep);
-    }
+    setCurrentStep(step as AppStep);
   };
 
-  const canProceedToStep = (step: AppStep): boolean => {
-    switch (step) {
-      case 'login':
-        return true;
-      case 'onboarding':
-        return !!user;
-      case 'setup':
-        return !!user && !!user.experience && !!user.currentRole && !!user.region;
-      case 'interview':
-        return !!selectedInterviewType;
-      case 'results':
-        return !!interviewResult;
-      default:
-        return false;
-    }
-  };
+  if (isLoading) {
+    return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+    );
+  }
 
-  if (currentStep === 'login') {
+  if (!user) {
     return <LoginSignup onComplete={handleLoginComplete} />;
   }
 
   if (currentStep === 'onboarding') {
-    return <Onboarding user={user!} onComplete={handleOnboardingComplete} />;
+    return <Onboarding user={user} onComplete={handleOnboardingComplete} />;
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation 
-        currentStep={currentStep} 
+      <Navigation
+        currentStep={currentStep}
         onNavigate={handleNavigate}
         canGoBack={currentStep !== 'interview'}
+        user={user}
+        onUpdateUser={handleUpdateUser}
       />
       
       {currentStep === 'setup' && (
@@ -124,7 +131,7 @@ function App() {
       )}
       
       {currentStep === 'interview' && selectedInterviewType && (
-        <InterviewFlow 
+        <InterviewFlow
           interviewType={selectedInterviewType}
           onComplete={handleInterviewComplete}
           jobDescription={jobDescription}
@@ -132,7 +139,7 @@ function App() {
       )}
       
       {currentStep === 'results' && interviewResult && (
-        <Dashboard 
+        <Dashboard
           result={interviewResult}
           onRetakeInterview={handleRetakeInterview}
         />

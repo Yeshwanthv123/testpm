@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Env files
+.env
+*.env
+backend/.env
+Frontend/.env
+
+# OS/editor
+.DS_Store
+*.log
