@@ -1,4 +1,4 @@
-import { Question } from '../types'; // Import the Question type
+import { Question } from '../types';
 
 const API_BASE =
   (import.meta.env.VITE_API_BASE as string) ||
@@ -33,18 +33,24 @@ export async function api<T>(
   return (await res.json()) as T;
 }
 
-// +++ Add the following new function +++
+// Fetches and transforms questions from the backend
 export const fetchInterviewQuestions = async (company: string, role: string): Promise<Question[]> => {
   try {
-    // Construct the path with URL query parameters
     const path = `/api/interview/questions?company=${encodeURIComponent(company)}&role=${encodeURIComponent(role)}`;
-    // Use the existing generic 'api' function to make the request
-    const questions = await api<Question[]>(path, 'GET');
-    return questions;
+    const backendQuestions = await api<any[]>(path, 'GET');
+
+    // Transform backend data to match the frontend's Question type
+    return backendQuestions.map(q => ({
+        id: String(q.id),
+        question: q.text,
+        category: q.category || 'General',
+        difficulty: (q.complexity?.toLowerCase() as 'easy' | 'medium' | 'hard') || 'medium',
+        type: 'behavioral', // Defaulting type as it's not in the backend model
+        timeLimit: 240, // Defaulting time limit
+        skills: ['Problem Solving', 'Communication'], // Defaulting skills
+    }));
   } catch (error) {
     console.error('Failed to fetch interview questions:', error);
-    // On failure, return an empty array to prevent the app from crashing
-    return [];
+    return []; // Return empty array on failure
   }
 };
-// +++ End of new code +++

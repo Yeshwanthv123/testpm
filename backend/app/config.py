@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_SECRET: str = "dev-refresh-secret"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
-    CORS_ORIGINS: str = "http://localhost:3000,*"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     DATABASE_URL: str = "sqlite:///./app.db"
 
     # OAuth + Frontend
@@ -18,10 +18,11 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_ID: str | None = None
     LINKEDIN_CLIENT_SECRET: str | None = None
 
-    # NEW: required by SessionMiddleware for OAuth state/nonce
-    SESSION_SECRET: str = "dev-session-secret"
+    # This now matches the variable in your .env file
+    SECRET_KEY: str = "a-very-secret-key-that-you-should-change"
 
     class Config:
         env_file = ".env"
+        case_sensitive = False
 
 settings = Settings()

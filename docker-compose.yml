@@ -1,33 +1,45 @@
 services:
-  backend:
-    build:
-      context: ./backend
-    container_name: pmbot-backend
+  pmbot-backend:
+    build: ./backend
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app
     env_file:
       - ./backend/.env
-    environment:
-      - CORS_ORIGINS=http://localhost:3000,*
+    depends_on:
+      - db
     networks:
-      - pmbot_net
+      - pmbot-net
 
-  frontend:
-    build:
-      context: ./Frontend
-      dockerfile: Dockerfile
-    container_name: pmbot-frontend
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=mydatabase
+    ports:
+      - "5432:5432"
+    networks:
+      - pmbot-net
+
+  pmbot-frontend:
+    build: ./Frontend
     ports:
       - "3000:3000"
-    environment:
-      - VITE_API_BASE=http://localhost:8000
-      - REACT_APP_API_BASE=http://localhost:8000
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+    volumes:
+      - ./Frontend:/app
+      - /app/node_modules
     depends_on:
-      - backend
+      - pmbot-backend
     networks:
-      - pmbot_net
+      - pmbot-net
+
+volumes:
+  postgres_data:
 
 networks:
-  pmbot_net:
+  pmbot-net:
     driver: bridge

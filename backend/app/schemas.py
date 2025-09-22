@@ -1,7 +1,10 @@
-# backend/app/schemas.py
-
-from pantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
+
+# New schema for handling JSON login requests
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -13,7 +16,6 @@ class UserCreate(UserBase):
 class UserInDB(UserBase):
     id: int
     onboarding_complete: bool
-
     class Config:
         from_attributes = True
 
@@ -27,7 +29,6 @@ class TokenData(BaseModel):
 class Message(BaseModel):
     message: str
 
-# +++ Add the following new code +++
 class QuestionBase(BaseModel):
     text: str
     company: Optional[str] = None
@@ -37,7 +38,5 @@ class QuestionBase(BaseModel):
 
 class QuestionInDB(QuestionBase):
     id: int
-
     class Config:
         from_attributes = True
-# +++ End of new code +++

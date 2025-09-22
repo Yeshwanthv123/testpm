@@ -1,16 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-# The 'database' object is no longer used, so we remove the import
-# from app.db import database 
+from starlette.middleware.sessions import SessionMiddleware
 from app.routers import auth, oauth, stubs, interview
+from app.config import settings
 
 app = FastAPI()
 
-# CORS configuration remains the same
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+origins = [origin.strip() for origin in settings.CORS_ORIGINS.split(',')]
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,19 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# The new session-based approach does not require these startup/shutdown events,
-# so they have been removed.
-# @app.on_event("startup")
-# async def startup():
-#     await database.connect()
-#
-# @app.on_event("shutdown")
-# async def shutdown():
-#     await database.disconnect()
-
-# Include all your routers
-app.include_router(auth.router)
-app.include_router(oauth.router)
+app.include_router(auth.router, prefix="/auth")
+app.include_router(oauth.router, prefix="/auth")
 app.include_router(stubs.router)
 app.include_router(interview.router)
 

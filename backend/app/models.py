@@ -1,40 +1,27 @@
-    # backend/app/models.py
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Float
+from .db import Base
 
-import sqlalchemy
-from .db import metadata
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    full_name = Column(String)
+    is_active = Column(Boolean, default=True)
+    onboarding_complete = Column(Boolean, default=False)
 
+class InterviewSession(Base):
+    __tablename__ = "interview_sessions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    session_date = Column(DateTime)
+    score = Column(Float)
 
-User = sqlalchemy.Table(
-    "users",
-    metadata,
-    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("email", sqlalchemy.String, unique=True, index=True),
-    sqlalchemy.Column("hashed_password", sqlalchemy.String),
-    sqlalchemy.Column("full_name", sqlalchemy.String),
-    sqlalchemy.Column("is_active", sqlalchemy.Boolean, default=True),
-    sqlalchemy.Column("onboarding_complete", sqlalchemy.Boolean, default=False),
-)
-
-
-InterviewSession = sqlalchemy.Table(
-    "interview_sessions",
-    metadata,
-    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("user_id", sqlalchemy.ForeignKey("users.id")),
-    sqlalchemy.Column("session_date", sqlalchemy.DateTime),
-    sqlalchemy.Column("score", sqlalchemy.Float),
-    # Add other relevant fields
-)
-
-# +++ Add the following new code +++
-Question = sqlalchemy.Table(
-    "questions",
-    metadata,
-    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
-    sqlalchemy.Column("text", sqlalchemy.String, nullable=False),
-    sqlalchemy.Column("company", sqlalchemy.String, index=True),
-    sqlalchemy.Column("category", sqlalchemy.String),
-    sqlalchemy.Column("complexity", sqlalchemy.String),
-    sqlalchemy.Column("experience_level", sqlalchemy.String),
-)
-# +++ End of new code +++
+class Question(Base):
+    __tablename__ = "questions"
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(String, nullable=False)
+    company = Column(String, index=True)
+    category = Column(String)
+    complexity = Column(String)
+    experience_level = Column(String)
