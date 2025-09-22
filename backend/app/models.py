@@ -9,6 +9,11 @@ class User(Base):
     full_name = Column(String)
     is_active = Column(Boolean, default=True)
     onboarding_complete = Column(Boolean, default=False)
+    # Added fields from onboarding
+    experience = Column(String, nullable=True)
+    currentRole = Column(String, nullable=True)
+    region = Column(String, nullable=True)
+
 
 class InterviewSession(Base):
     __tablename__ = "interview_sessions"

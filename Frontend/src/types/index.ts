@@ -1,6 +1,6 @@
 export interface User {
-  id: string;
-  full_name: string; // Changed from 'name' to 'full_name'
+  id: number; // Changed from 'string' to 'number'
+  full_name: string;
   email: string;
   experience: string;
   targetCompanies: string[];

@@ -78,10 +78,9 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
             body: JSON.stringify({
                 full_name: userProfile.full_name,
                 email: userProfile.email,
-                // Add other fields to update
-                // currentRole: userProfile.currentRole,
-                // experience: userProfile.experience,
-                // region: userProfile.region,
+                currentRole: userProfile.currentRole,
+                experience: userProfile.experience,
+                region: userProfile.region,
             }),
         });
 

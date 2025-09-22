@@ -13,9 +13,19 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    experience: Optional[str] = None
+    currentRole: Optional[str] = None
+    region: Optional[str] = None
+
 class UserInDB(UserBase):
     id: int
     onboarding_complete: bool
+    experience: Optional[str] = None
+    currentRole: Optional[str] = None
+    region: Optional[str] = None
     class Config:
         from_attributes = True
 
