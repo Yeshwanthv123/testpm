@@ -17,3 +17,26 @@ Frontend/.env
 # OS/editor
 .DS_Store
 *.log
+# --- env & secrets ---
+.env
+*.env
+backend/.env
+Frontend/.env
+client_secret_*.json
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+
+# --- node ---
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+.cache/
+
+# --- os/editor ---
+.DS_Store
+*.log
