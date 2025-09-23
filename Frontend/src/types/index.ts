@@ -1,5 +1,5 @@
 export interface User {
-  id: number; // Changed from 'string' to 'number'
+  id: number; // backend uses number IDs
   full_name: string;
   email: string;
   experience: string;
@@ -10,13 +10,22 @@ export interface User {
 
 export interface Question {
   id: string;
-  type: 'behavioral' | 'product_design' | 'analytical' | 'technical' | 'strategic';
+  type: 'behavioral' | 'product_design' | 'analytical' | 'technical' | 'strategic' | string;
   category: string;
   question: string;
   followUpQuestions?: string[];
   timeLimit: number; // in seconds
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: 'easy' | 'medium' | 'hard' | string;
   skills: string[];
+
+  // --- optional backend fields (do not break existing logic) ---
+  text?: string | null;
+  company?: string | null;
+  complexity?: string | null;
+  experience_level?: string | null;
+  years_of_experience?: string | null;
+  created_at?: string | null | Date;
+  [key: string]: any;
 }
 
 export interface InterviewSession {

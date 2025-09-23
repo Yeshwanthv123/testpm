@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Clock, MessageSquare, ArrowRight, CheckCircle, AlertCircle, Mic, MicOff, Volume2, VolumeX, Sparkles, Lightbulb, Home, ArrowLeft } from 'lucide-react';
 import { InterviewType, Question, Answer } from '../types';
 import { sampleQuestions } from '../data/mockData';
@@ -9,6 +9,8 @@ interface InterviewFlowProps {
   onComplete: (answers: Answer[]) => void;
   jobDescription?: string;
 }
+
+const DEFAULT_PER_QUESTION_SECONDS = 180; // fallback if we can't infer per-question time
 
 const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete, jobDescription }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -22,24 +24,77 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
 
   const { voiceState, startRecording, stopRecording, speakText, clearTranscript, isSupported } = useVoice();
 
-  // Mock questions for the interview type - in real app, would generate from JD if provided
-  const questions = jobDescription 
-    ? [...sampleQuestions.slice(0, Math.floor(interviewType.questionCount / 2)), 
-       ...generateJobDescriptionQuestions(jobDescription, Math.ceil(interviewType.questionCount / 2))]
-    : sampleQuestions.slice(0, interviewType.questionCount);
-  
-  const currentQuestion = questions[currentQuestionIndex];
+  // --- Normalize incoming questions (from backend or mocks) to your UI shape ---
+  function perQuestionSeconds(): number {
+    const total = Math.max(1, interviewType?.questionCount ?? 10);
+    const fromType = Math.floor(((interviewType?.duration ?? 30) * 60) / total);
+    return fromType > 0 ? fromType : DEFAULT_PER_QUESTION_SECONDS;
+  }
 
-  // Mock function to generate questions from job description
+  function toQuestionArray(raw: unknown): Question[] {
+    const sec = perQuestionSeconds();
+
+    // Expecting an array of objects with at least { id?, question? | text? }
+    if (!Array.isArray(raw)) return [];
+
+    return raw
+      .map((item: any, idx: number): Question | null => {
+        const qText = typeof item?.question === 'string' ? item.question
+                    : typeof item?.text === 'string' ? item.text
+                    : null;
+        if (!qText || !qText.trim()) return null;
+
+        const id = item?.id != null ? String(item.id) : `q_${idx}`;
+
+        // Provide safe defaults so your UI badges/time/skills render correctly
+        const q: Question = {
+          id,
+          question: qText.trim(),
+          type: (item?.type as Question['type']) || 'behavioral',
+          category: (item?.category as string) || 'General',
+          timeLimit: typeof item?.timeLimit === 'number' && item.timeLimit > 0 ? item.timeLimit : sec,
+          difficulty: (item?.difficulty as Question['difficulty']) || 'medium',
+          skills: Array.isArray(item?.skills) ? item.skills : [],
+        };
+        return q;
+      })
+      .filter((q): q is Question => q !== null);
+  }
+
+  function getInjectedQuestions(): Question[] | null {
+    // Option A: sessionStorage (recommended by parent right before navigation)
+    try {
+      const cached = sessionStorage.getItem('pmbot_questions');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const arr = toQuestionArray(parsed);
+        if (arr.length) return arr.slice(0, Math.max(1, interviewType.questionCount));
+      }
+    } catch { /* ignore */ }
+
+    // Option B: global window injection
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const globalArr = (window as any).__PMBOT_QUESTIONS;
+      if (globalArr) {
+        const arr = toQuestionArray(globalArr);
+        if (arr.length) return arr.slice(0, Math.max(1, interviewType.questionCount));
+      }
+    } catch { /* ignore */ }
+
+    return null;
+  }
+
+  // --- JD-based mock generator (kept exactly as your current logic expects) ---
   function generateJobDescriptionQuestions(jd: string, count: number): Question[] {
-    // In real app, this would use AI to analyze JD and generate relevant questions
+    const sec = perQuestionSeconds();
     const mockJDQuestions: Question[] = [
       {
         id: 'jd1',
         type: 'strategic',
         category: 'Role-Specific',
         question: `Based on the job requirements, how would you approach the key responsibilities mentioned in this role during your first 90 days?`,
-        timeLimit: 300,
+        timeLimit: sec,
         difficulty: 'medium',
         skills: ['Strategy', 'Planning', 'Execution']
       },
@@ -48,13 +103,43 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
         type: 'behavioral',
         category: 'Experience Match',
         question: `Tell me about a time when you handled a situation similar to the challenges described in this job posting.`,
-        timeLimit: 240,
+        timeLimit: sec,
         difficulty: 'medium',
         skills: ['Experience', 'Problem Solving', 'Leadership']
       }
     ];
     return mockJDQuestions.slice(0, count);
   }
+
+  // --- Final questions list for this interview run ---
+  const questions: Question[] = useMemo(() => {
+    const fromBackend = getInjectedQuestions();
+
+    if (fromBackend && fromBackend.length) {
+      // If JD is provided, keep your behavior: mix JD-based questions with existing
+      if (jobDescription) {
+        const firstHalf = Math.floor(interviewType.questionCount / 2);
+        const secondHalf = Math.max(0, interviewType.questionCount - firstHalf);
+        const jdQs = generateJobDescriptionQuestions(jobDescription, secondHalf);
+        const base = fromBackend.slice(0, firstHalf);
+        return (base.length + jdQs.length) > 0
+          ? [...base, ...jdQs]
+          : sampleQuestions.slice(0, interviewType.questionCount);
+      }
+      return fromBackend.slice(0, interviewType.questionCount);
+    }
+
+    // Fallback to your existing sampleQuestions logic
+    if (jobDescription) {
+      return [
+        ...sampleQuestions.slice(0, Math.floor(interviewType.questionCount / 2)),
+        ...generateJobDescriptionQuestions(jobDescription, Math.ceil(interviewType.questionCount / 2))
+      ];
+    }
+    return sampleQuestions.slice(0, interviewType.questionCount);
+  }, [interviewType, jobDescription]);
+
+  const currentQuestion = questions[currentQuestionIndex];
 
   useEffect(() => {
     if (currentQuestion) {
@@ -80,14 +165,16 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
   }, [voiceState.transcript]);
 
   const handlePlayQuestion = () => {
+    if (!currentQuestion) return;
+
     if (isQuestionPlaying) {
       speechSynthesis.cancel();
       setIsQuestionPlaying(false);
     } else {
       setIsQuestionPlaying(true);
       speakText(currentQuestion.question);
-      
-      // Listen for speech end
+
+      // Also wire up native utterance end as a safety
       const utterance = new SpeechSynthesisUtterance(currentQuestion.question);
       utterance.onend = () => setIsQuestionPlaying(false);
       utterance.onerror = () => setIsQuestionPlaying(false);
@@ -104,7 +191,7 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
   };
 
   const handleNextQuestion = () => {
-    if (!currentAnswer.trim()) return;
+    if (!currentQuestion || !currentAnswer.trim()) return;
 
     const answer: Answer = {
       questionId: currentQuestion.id,
@@ -135,7 +222,6 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
   };
 
   const confirmExit = () => {
-    // Navigate back to setup - this would be handled by parent component
     window.history.back();
   };
 
@@ -146,6 +232,7 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
   };
 
   const getTimeColor = () => {
+    if (!currentQuestion) return 'text-gray-600';
     const percentage = timeRemaining / currentQuestion.timeLimit;
     if (percentage > 0.5) return 'text-green-600';
     if (percentage > 0.25) return 'text-yellow-600';
@@ -160,10 +247,10 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
       technical: 'Explain technical concepts clearly and consider trade-offs',
       strategic: 'Think about long-term implications and stakeholder impact'
     };
-    return tips[type as keyof typeof tips] || 'Structure your response clearly and provide specific examples';
+    return (tips as any)[type] || 'Structure your response clearly and provide specific examples';
   };
 
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+  const progress = ((currentQuestionIndex + 1) / Math.max(1, questions.length)) * 100;
 
   if (isTransitioning) {
     return (
@@ -171,6 +258,23 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-lg text-gray-600">Loading next question...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentQuestion) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg text-center">
+          <h2 className="text-xl font-semibold mb-2">No questions available</h2>
+          <p className="text-gray-600">Please go back and try again.</p>
+          <button
+            onClick={() => window.history.back()}
+            className="mt-4 px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all font-medium"
+          >
+            Go Back
+          </button>
         </div>
       </div>
     );

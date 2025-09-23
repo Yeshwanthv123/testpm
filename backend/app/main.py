@@ -20,7 +20,9 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth")
 app.include_router(oauth.router, prefix="/auth")
 app.include_router(stubs.router)
-app.include_router(interview.router)
+
+# IMPORTANT: mount interview under /api so the frontend path /api/interview/questions works
+app.include_router(interview.router, prefix="/api")
 
 @app.get("/")
 def read_root():

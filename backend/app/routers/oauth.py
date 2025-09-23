@@ -3,7 +3,7 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from sqlalchemy.orm import Session
 from .. import models, schemas
-from ..db import get_db
+from ..database import get_db, SessionLocal, Base
 from ..security import create_access_token
 
 router = APIRouter()

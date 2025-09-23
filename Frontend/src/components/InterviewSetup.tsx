@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
-import { Clock, Users, Target, Chrome, Package, Building2, ArrowRight, Star, Smartphone, Play, Car, FileText, Sparkles, Upload, Search, X } from 'lucide-react';
-import { InterviewType } from '../types';
+import { Clock, Users, Target, Chrome, Package, Building2, ArrowRight, Star, Smartphone, Play, Car, FileText, Sparkles, Upload, Search, X, Loader2 } from 'lucide-react';
+import { InterviewType, Question, User } from '../types';
 import { interviewTypes } from '../data/mockData';
+import { fetchInterviewQuestions } from '../utils/api';
 
 interface InterviewSetupProps {
-  onStartInterview: (interviewType: InterviewType, jobDescription?: string) => void;
+  user: User;
+  onStartInterview: (interviewType: InterviewType, questions: Question[], jobDescription?: string) => void;
 }
 
-const InterviewSetup: React.FC<InterviewSetupProps> = ({ onStartInterview }) => {
+const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview }) => {
   const [selectedType, setSelectedType] = useState<InterviewType | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [useJobDescription, setUseJobDescription] = useState(false);
   const [jdFile, setJdFile] = useState<File | null>(null);
+  const [isFetchingQuestions, setIsFetchingQuestions] = useState(false);
 
   const getIcon = (iconName: string) => {
     const icons = {
@@ -29,6 +32,39 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ onStartInterview }) => 
     const Icon = icons[iconName as keyof typeof icons] || Target;
     return Icon;
   };
+
+  // --- helpers: keep logic stable with backend expectations ---
+  function normalizeRole(role?: string | null): string | undefined {
+    if (!role) return undefined;
+    const r = role.trim().toLowerCase();
+    const map: Record<string, string> = {
+      'apm': 'APM',
+      'associate pm': 'APM',
+      'product manager': 'PM',
+      'pm': 'PM',
+      'senior pm': 'Senior PM',
+      'sr pm': 'Senior PM',
+      'sr. pm': 'Senior PM',
+      'group pm': 'Group PM',
+      'gpm': 'Group PM',
+      'principal pm': 'Principal PM',
+      'pr. pm': 'Principal PM',
+      'director': 'Director',
+      'product director': 'Director',
+    };
+    return map[r] ?? role.trim();
+  }
+
+  function normalizeExperience(exp?: string | null): string | undefined {
+    if (!exp) return undefined;
+    const e = exp.trim().toLowerCase();
+    if (['0-2', '2-4', '5-8', '8+'].includes(e)) return e;
+    if (e.includes('0') && e.includes('2')) return '0-2';
+    if (e.includes('2') && e.includes('4')) return '2-4';
+    if (e.includes('5') && e.includes('8')) return '5-8';
+    if (e.includes('8')) return '8+';
+    return exp.trim();
+  }
 
   // Extended company list with search functionality
   const allCompanies = [
@@ -180,7 +216,6 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ onStartInterview }) => 
       ),
       color: 'from-purple-500 to-indigo-600' 
     },
-    // Additional companies for better search experience
     { 
       id: 'Stripe', 
       name: 'Stripe', 
@@ -222,15 +257,11 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ onStartInterview }) => 
 
   const generalPMType = interviewTypes.find(type => type.isGeneral);
   
-  const filteredInterviewTypes = selectedCompany 
-    ? interviewTypes.filter(type => type.company === selectedCompany)
-    : [];
-
   const handleCompanySelect = (companyId: string) => {
     setSelectedCompany(companyId);
-    const companyType = interviewTypes.find(type => type.company === companyId);
-    if (companyType) {
-      setSelectedType(companyType);
+    const companyType = interviewTypes.find(type => type.company === companyId) || interviewTypes.find(t => t.isGeneral);
+    if(companyType) {
+        setSelectedType(companyType);
     }
     setSearchQuery(''); // Clear search after selection
   };
@@ -253,13 +284,34 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ onStartInterview }) => 
     }
   };
 
-  const handleStartInterview = () => {
-    if (selectedType) {
-      onStartInterview(selectedType, useJobDescription ? jobDescription : undefined);
+  const handleStartInterview = async () => {
+    if (!selectedType || !user.currentRole || !user.experience) {
+      alert("Please select an interview type and ensure your profile is complete.");
+      return;
+    }
+
+    setIsFetchingQuestions(true);
+    try {
+      // NOTE: use object-form to match utils/api.ts
+      const apiResult = await fetchInterviewQuestions({
+        company: (selectedCompany || 'Generic'),
+        role: normalizeRole(user.currentRole),
+        experience: normalizeExperience(user.experience),
+      });
+
+      // If your `Question` type differs from API result, cast safely
+      const questions = (apiResult as unknown) as Question[];
+
+      onStartInterview(selectedType, questions, useJobDescription ? jobDescription : undefined);
+    } catch (error) {
+      console.error('Failed to start interview:', error);
+      alert('Failed to fetch questions. Please try again.');
+    } finally {
+      setIsFetchingQuestions(false);
     }
   };
 
-  const canStartInterview = selectedType && (!useJobDescription || jobDescription.trim());
+  const canStartInterview = selectedType && (!useJobDescription || jobDescription.trim()) && !isFetchingQuestions;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
@@ -576,8 +628,17 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ onStartInterview }) => 
                 disabled={!canStartInterview}
                 className="inline-flex items-center space-x-3 md:space-x-4 px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-2xl hover:from-yellow-600 hover:to-orange-600 transition-all transform hover:scale-105 font-bold text-base md:text-xl shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none w-full sm:w-auto"
               >
-                <span>Start Interview</span>
-                <ArrowRight className="w-5 h-5 md:w-6 md:h-6" />
+                {isFetchingQuestions ? (
+                    <>
+                        <Loader2 className="w-5 h-5 md:w-6 md:h-6 animate-spin" />
+                        <span>Preparing Interview...</span>
+                    </>
+                ) : (
+                    <>
+                        <span>Start Interview</span>
+                        <ArrowRight className="w-5 h-5 md:w-6 md:h-6" />
+                    </>
+                )}
               </button>
               {!canStartInterview && useJobDescription && !jobDescription.trim() && (
                 <p className="text-red-600 text-sm mt-3">Please provide a job description to continue</p>
