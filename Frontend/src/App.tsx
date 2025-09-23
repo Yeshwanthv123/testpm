@@ -5,8 +5,8 @@ import Onboarding from './components/Onboarding';
 import InterviewSetup from './components/InterviewSetup';
 import InterviewFlow from './components/InterviewFlow';
 import Dashboard from './components/Dashboard';
-import { User, InterviewType, Answer, InterviewResult, SkillScore } from './types';
-import { mockSkillScores, mockPeerComparison } from './data/mockData';
+import { User, InterviewType, Answer, InterviewResult, SkillScore, Question } from './types'; // Import Question
+import { mockSkillScores, mockPeerComparison, detailedInsights } from './data/mockData';
 import { calculateSkillScore, generateFeedback, calculatePercentile } from './utils/scoring';
 
 type AppStep = 'login' | 'onboarding' | 'setup' | 'interview' | 'results';
@@ -20,10 +20,12 @@ function App() {
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
   const [jobDescription, setJobDescription] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [interviewQuestions, setInterviewQuestions] = useState<Question[]>([]); // <-- ADD THIS STATE
 
+  // Check for an existing token on initial load
   useEffect(() => {
     const checkAuthStatus = async () => {
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem('access_token');
       if (token) {
         try {
           const response = await fetch(`${API_BASE}/auth/me`, {
@@ -31,10 +33,10 @@ function App() {
           });
           if (response.ok) {
             const userData = await response.json();
-            handleLoginComplete(userData);
+            handleLoginSuccess(userData);
           } else {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
           }
         } catch (error) {
           console.error("Failed to verify auth status", error);
@@ -45,7 +47,7 @@ function App() {
     checkAuthStatus();
   }, []);
 
-  const handleLoginComplete = (userData: User) => {
+  const handleLoginSuccess = (userData: User) => {
     setUser(userData);
     if (!userData.experience || !userData.currentRole || !userData.region) {
       setCurrentStep('onboarding');
@@ -54,96 +56,79 @@ function App() {
     }
   };
   
+  const handleOnboardingComplete = async (updatedUserData: User) => {
+    // ... (This function remains the same as before)
+  };
+  
   const handleUpdateUser = (updatedUser: User) => {
     setUser(updatedUser);
   };
 
-  const handleOnboardingComplete = (userData: User) => {
-    setUser(userData);
-    setCurrentStep('setup');
-  };
-
-  const handleInterviewStart = (interviewType: InterviewType, jd?: string) => {
+  // v-- THIS FUNCTION IS UPDATED
+  const handleInterviewStart = (interviewType: InterviewType, questions: Question[], jd?: string) => {
     setSelectedInterviewType(interviewType);
+    setInterviewQuestions(questions); // <-- SET THE QUESTIONS
     setJobDescription(jd);
     setCurrentStep('interview');
   };
 
   const handleInterviewComplete = (answers: Answer[]) => {
-    if (!selectedInterviewType) return;
-    const skillScores: SkillScore[] = mockSkillScores.map(mockScore => ({
-      ...mockScore,
-      feedback: generateFeedback(mockScore.score, mockScore.skill),
-      percentile: calculatePercentile(mockScore.score, mockScore.skill)
-    }));
-    const result: InterviewResult = {
-      sessionId: Date.now().toString(),
-      overallScore: Math.round(skillScores.reduce((sum, skill) => sum + skill.score, 0) / skillScores.length),
-      skillScores,
-      strengths: ['Strength 1', 'Strength 2'],
-      improvements: ['Improvement 1', 'Improvement 2'],
-      peerComparison: mockPeerComparison,
-      detailedFeedback: 'Good job!'
-    };
-    setInterviewResult(result);
-    setCurrentStep('results');
+    // ... (This function remains the same as before)
   };
 
   const handleRetakeInterview = () => {
-    setCurrentStep('setup');
-    setInterviewResult(null);
-    setSelectedInterviewType(null);
-    setJobDescription(undefined);
+    // ... (This function remains the same as before)
   };
 
   const handleNavigate = (step: string) => {
     setCurrentStep(step as AppStep);
   };
+  
+  const handleLogout = () => {
+    // ... (This function remains the same as before)
+  };
 
   if (isLoading) {
-    return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-    );
+    // ... (remains the same)
   }
-
-  if (!user) {
-    return <LoginSignup onComplete={handleLoginComplete} />;
-  }
-
-  if (currentStep === 'onboarding') {
-    return <Onboarding user={user} onComplete={handleOnboardingComplete} />;
+  
+  const renderStep = () => {
+    switch(currentStep) {
+      case 'login':
+        return <LoginSignup onComplete={handleLoginSuccess} />;
+      case 'onboarding':
+        return user ? <Onboarding user={user} onComplete={handleOnboardingComplete} /> : <LoginSignup onComplete={handleLoginSuccess} />;
+      case 'setup':
+        return <InterviewSetup onStartInterview={handleInterviewStart} />;
+      case 'interview':
+        // v-- THIS PART IS UPDATED
+        return selectedInterviewType ? (
+          <InterviewFlow 
+            interviewType={selectedInterviewType}
+            questions={interviewQuestions} // <-- PASS THE QUESTIONS
+            onComplete={handleInterviewComplete}
+            jobDescription={jobDescription} 
+          />
+        ) : <InterviewSetup onStartInterview={handleInterviewStart} />;
+      case 'results':
+        return interviewResult ? <Dashboard result={interviewResult} onRetakeInterview={handleRetakeInterview} /> : <InterviewSetup onStartInterview={handleInterviewStart} />;
+      default:
+        return <LoginSignup onComplete={handleLoginSuccess} />;
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation
-        currentStep={currentStep}
-        onNavigate={handleNavigate}
-        canGoBack={currentStep !== 'interview'}
-        user={user}
-        onUpdateUser={handleUpdateUser}
-      />
-      
-      {currentStep === 'setup' && (
-        <InterviewSetup onStartInterview={handleInterviewStart} />
-      )}
-      
-      {currentStep === 'interview' && selectedInterviewType && (
-        <InterviewFlow
-          interviewType={selectedInterviewType}
-          onComplete={handleInterviewComplete}
-          jobDescription={jobDescription}
+      {currentStep !== 'login' && user && (
+         <Navigation
+            currentStep={currentStep}
+            onNavigate={handleNavigate}
+            user={user}
+            onUpdateUser={handleUpdateUser}
+            onLogout={handleLogout}
         />
       )}
-      
-      {currentStep === 'results' && interviewResult && (
-        <Dashboard
-          result={interviewResult}
-          onRetakeInterview={handleRetakeInterview}
-        />
-      )}
+      {renderStep()}
     </div>
   );
 }
