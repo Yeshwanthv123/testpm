@@ -1,7 +1,7 @@
 import os
 import csv
 import math
-from typing import Dict, Iterable, Optional, Tuple, List, Set
+from typing import Dict, Optional, Tuple, List, Set
 
 from sqlalchemy.orm import Session
 
@@ -17,15 +17,21 @@ def _infer_csv_path() -> Optional[str]:
     Try sensible defaults so you don't have to pass a path every time.
     Checks (in order):
       - ENV PM_QUESTIONS_CSV
+      - ./PM_Questions_dedup_final_clean.csv
       - ./PM_Questions_dedup.csv
+      - ../PM_Questions_dedup_final_clean.csv
       - ../PM_Questions_dedup.csv
+      - /app/PM_Questions_dedup_final_clean.csv
       - /app/PM_Questions_dedup.csv
     """
     env_path = os.getenv("PM_QUESTIONS_CSV")
     candidates = [
         env_path,
+        os.path.join(os.getcwd(), "PM_Questions_dedup_final_clean.csv"),
         os.path.join(os.getcwd(), "PM_Questions_dedup.csv"),
+        os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_dedup_final_clean.csv"),
         os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_dedup.csv"),
+        "/app/PM_Questions_dedup_final_clean.csv",
         "/app/PM_Questions_dedup.csv",
     ]
     for p in candidates:
@@ -155,45 +161,24 @@ def _model_columns() -> Set[str]:
     return {c.name for c in Question.__table__.columns}  # type: ignore[attr-defined]
 
 
-def _row_to_kwargs(row: Dict[str, str], model_cols: Set[str]) -> Dict[str, str]:
-    """
-    Map CSV columns to model fields, only including keys that actually exist
-    in the Question model (so we don't break if your column is 'text' vs 'question').
-    """
-    question_text = _clean_str(row.get("Question"))
-    company = _clean_str(row.get("Company")) or "Generic"
-    category = _clean_str(row.get("Category"))
-    complexity = _clean_str(row.get("Complexity"))
-    exp_level = _normalize_role(_clean_str(row.get("Experience Level")))
-    yoexp = _canonicalize_years(_clean_str(row.get("Years of Experience")))
-
-    data = {
-        "company": company,
-        "category": category,
-        "complexity": complexity,
-        "experience_level": exp_level,
-        "years_of_experience": yoexp,
-    }
-
-    # Handle text field name difference
-    if "text" in model_cols:
-        data["text"] = question_text
-    elif "question" in model_cols:
-        data["question"] = question_text
-
-    # Only keep keys that are actual model columns
-    return {k: v for k, v in data.items() if k in model_cols}
+def _split_companies(raw: Optional[str]) -> List[str]:
+    """Split a CSV Company cell like 'Google, Meta, Amazon' into normalized company names."""
+    if not raw:
+        return []
+    parts = [p.strip() for p in str(raw).split(",")]
+    return [p for p in parts if p]
 
 
 def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict[str, int]:
     """
     Load/replace questions from CSV into DB.
+    Expands multi-company rows into one DB row per company.
     Returns stats: {'read': N, 'inserted': M, 'skipped': D}
     """
     path = csv_path or _infer_csv_path()
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(
-            f"Questions CSV not found. Looked for PM_Questions_dedup.csv; "
+            f"Questions CSV not found. Looked for PM_Questions_dedup_final_clean.csv/PM_Questions_dedup.csv; "
             f"set PM_QUESTIONS_CSV or place the file in backend/ (current: {os.getcwd()})"
         )
 
@@ -206,7 +191,6 @@ def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict
 
     with open(path, "r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
-        # Validate headers minimally
         required = {"Question", "Company", "Category", "Complexity", "Experience Level", "Years of Experience"}
         missing = required.difference(set(reader.fieldnames or []))
         if missing:
@@ -214,32 +198,53 @@ def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict
 
         for row in reader:
             read_count += 1
-            kwargs = _row_to_kwargs(row, model_cols)
 
-            # Must have a non-empty question text (under 'text' or 'question')
-            qtext = kwargs.get("text") or kwargs.get("question")
-            if not qtext:
+            question_text = _clean_str(row.get("Question"))
+            company_cell  = _clean_str(row.get("Company")) or "Generic"
+            category      = _clean_str(row.get("Category"))
+            complexity    = _clean_str(row.get("Complexity"))
+            exp_level     = _normalize_role(_clean_str(row.get("Experience Level")))
+            yoexp         = _canonicalize_years(_clean_str(row.get("Years of Experience")))
+
+            if not question_text:
                 skip_count += 1
                 continue
 
-            # Deduplicate on key fields present in the model
-            dedupe_key = (
-                (kwargs.get("text") or kwargs.get("question")),
-                kwargs.get("company"),
-                kwargs.get("category"),
-                kwargs.get("complexity"),
-                kwargs.get("experience_level"),
-                kwargs.get("years_of_experience"),
-            )
-            if dedupe_key in seen:
-                skip_count += 1
-                continue
-            seen.add(dedupe_key)
+            companies = _split_companies(company_cell)
+            if not companies:
+                companies = ["Generic"]
 
-            to_insert.append(Question(**kwargs))
+            for company in companies:
+                data = {
+                    "company": company,
+                    "category": category,
+                    "complexity": complexity,
+                    "experience_level": exp_level,
+                    "years_of_experience": yoexp,
+                }
+                # text vs question column name
+                if "text" in model_cols:
+                    data["text"] = question_text
+                elif "question" in model_cols:
+                    data["question"] = question_text
+
+                # Deduplicate per (text|question, company, ...)
+                dedupe_key = (
+                    (data.get("text") or data.get("question")),
+                    data.get("company"),
+                    data.get("category"),
+                    data.get("complexity"),
+                    data.get("experience_level"),
+                    data.get("years_of_experience"),
+                )
+                if dedupe_key in seen:
+                    skip_count += 1
+                    continue
+                seen.add(dedupe_key)
+
+                to_insert.append(Question(**{k: v for k, v in data.items() if k in model_cols}))
 
     # Replace contents atomically
-    # (If you prefer append-only, remove the delete)
     db.query(Question).delete()
     if to_insert:
         db.add_all(to_insert)
@@ -253,7 +258,7 @@ def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict
 if __name__ == "__main__":
     """
     Allow: `python -m backend.load_questions` from project root (in Docker or locally).
-    Optionally set PM_QUESTIONS_CSV=/path/to/PM_Questions_dedup.csv
+    Optionally set PM_QUESTIONS_CSV=/path/to/PM_Questions_dedup_final_clean.csv
     """
     session = SessionLocal()
     try:

@@ -18,11 +18,14 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_ID: str | None = None
     LINKEDIN_CLIENT_SECRET: str | None = None
 
-    # This now matches the variable in your .env file
     SECRET_KEY: str = "a-very-secret-key-that-you-should-change"
+
+    # ✅ NEW: recognize your CSV path env var
+    PM_QUESTIONS_CSV: str | None = None
 
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # ✅ allow future envs without crashing
 
 settings = Settings()

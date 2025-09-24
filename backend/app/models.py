@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Reuse your project-wide Base
 from app.database import Base
@@ -17,6 +18,15 @@ class User(Base):
     # Typical identity fields; kept nullable=False only for email to match common patterns
     email = Column(String(320), unique=True, index=True, nullable=False)
     hashed_password = Column(String(512), nullable=True)
+
+    # --- ADDED PROFILE FIELDS ---
+    full_name = Column(String(256), nullable=True)
+    experience = Column(String(64), nullable=True)
+    currentRole = Column(String(128), nullable=True)
+    region = Column(String(128), nullable=True)
+    # Storing as JSONB is efficient for arrays if using Postgres
+    targetCompanies = Column(JSONB, nullable=True) 
+    # --- END ADDED FIELDS ---
 
     is_active = Column(Boolean, nullable=False, server_default="1")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

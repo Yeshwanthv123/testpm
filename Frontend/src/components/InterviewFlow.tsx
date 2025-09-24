@@ -12,6 +12,44 @@ interface InterviewFlowProps {
 
 const DEFAULT_PER_QUESTION_SECONDS = 180; // fallback if we can't infer per-question time
 
+// === NEW: derive skills from Category (+ light difficulty tweak) ===
+function deriveSkills(category?: string, difficulty?: string): string[] {
+  const cat = (category || '').toLowerCase();
+
+  const map: Record<string, string[]> = {
+    'strategic':          ['Strategy', 'Prioritization', 'Business Acumen'],
+    'strategy':           ['Strategy', 'Prioritization', 'Business Acumen'],
+    'leadership':         ['Leadership', 'Stakeholder Mgmt', 'Communication'],
+    'metrics':            ['Metrics', 'Analysis', 'Decision-making'],
+    'product health':     ['Metrics', 'Product Health', 'Diagnostics'],
+    'growth':             ['Growth', 'Experimentation', 'Retention'],
+    'a/b testing':        ['Experimentation', 'Hypothesis Design', 'Analysis'],
+    'customer obsession': ['Customer Empathy', 'Voice of Customer', 'Execution'],
+    'foundation':         ['Execution', 'Ownership', 'Collaboration'],
+    'behavioral':         ['Communication', 'Leadership', 'Stakeholder Mgmt'],
+    'technical':          ['Technical Depth', 'System Design', 'Trade-offs'],
+    'system design':      ['System Design', 'Scalability', 'Trade-offs'],
+    'product sense':      ['Product Sense', 'User Empathy', 'Prioritization'],
+    'execution':          ['Execution', 'Project Mgmt', 'Cross-functional'],
+    'launch':             ['Go-to-Market', 'Execution', 'Stakeholder Mgmt'],
+    'go-to-market':       ['Go-to-Market', 'Positioning', 'Execution'],
+    'pricing':            ['Pricing', 'Market Analysis', 'Trade-offs'],
+    'success criteria':   ['Metrics', 'Success Criteria', 'Decision-making'],
+    'prioritization':     ['Prioritization', 'Trade-offs', 'Decision-making'],
+  };
+
+  let picked: string[] | undefined;
+  for (const key of Object.keys(map)) {
+    if (cat.includes(key)) { picked = map[key]; break; }
+  }
+  if (!picked) picked = ['Product Sense', 'Execution'];
+
+  const diff = (difficulty || '').toLowerCase();
+  if (diff === 'easy') return picked.slice(0, 2);
+  if (diff === 'hard') return Array.from(new Set([...picked, 'Depth', 'Edge Cases']));
+  return picked;
+}
+
 const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete, jobDescription }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Answer[]>([]);
@@ -53,8 +91,11 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({ interviewType, onComplete
           type: (item?.type as Question['type']) || 'behavioral',
           category: (item?.category as string) || 'General',
           timeLimit: typeof item?.timeLimit === 'number' && item.timeLimit > 0 ? item.timeLimit : sec,
-          difficulty: (item?.difficulty as Question['difficulty']) || 'medium',
-          skills: Array.isArray(item?.skills) ? item.skills : [],
+          difficulty: (item?.difficulty as Question['difficulty']) || (item?.complexity as any) || 'medium',
+          // === NEW: use server-provided skills if present; otherwise derive from Category ===
+          skills: Array.isArray(item?.skills) && item.skills.length
+            ? item.skills
+            : deriveSkills(item?.category, item?.difficulty || item?.complexity),
         };
         return q;
       })

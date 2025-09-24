@@ -5,17 +5,17 @@ import hashlib
 import urllib.parse
 from typing import Optional, Dict, Any
 
-import requests  # make sure 'requests' is in backend/requirements.txt
+import requests
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError  # python-jose
+from jose import jwt, JWTError
 
 from ..database import get_db
 from ..models import User
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(tags=["auth"])
 
 # -------------------- Config -------------------- #
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
@@ -80,7 +80,7 @@ def get_current_user(
 class SignUpIn(BaseModel):
     email: EmailStr
     password: str
-    full_name: Optional[str] = None  # if you store it
+    full_name: Optional[str] = None
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -90,8 +90,8 @@ class UserUpdate(BaseModel):
     targetCompanies: Optional[list[str]] = None
 
 # -------------------- Email/Password Auth -------------------- #
-@router.post("/signup")
-def signup(payload: SignUpIn, db: Session = Depends(get_db)):
+@router.post("/register") # FIX: Changed from /signup to /register
+def register(payload: SignUpIn, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -101,7 +101,6 @@ def signup(payload: SignUpIn, db: Session = Depends(get_db)):
         hashed_password=_sha256(payload.password),
         is_active=True,
     )
-    # If your model has full_name column, set it via setattr guard:
     if hasattr(user, "full_name") and payload.full_name:
         setattr(user, "full_name", payload.full_name)
 
@@ -140,7 +139,6 @@ def me(current: User = Depends(get_current_user)):
         "email": current.email,
         "is_active": current.is_active,
         "created_at": current.created_at,
-        # include optional profile fields if present on your model
         **({ "full_name": getattr(current, "full_name") } if hasattr(current, "full_name") else {}),
         **({ "experience": getattr(current, "experience") } if hasattr(current, "experience") else {}),
         **({ "currentRole": getattr(current, "currentRole") } if hasattr(current, "currentRole") else {}),
@@ -150,7 +148,6 @@ def me(current: User = Depends(get_current_user)):
 
 @router.patch("/me")
 def update_me(update: UserUpdate, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    # update only known attributes on the model if they exist
     for field, value in update.dict(exclude_unset=True).items():
         if hasattr(current, field):
             setattr(current, field, value)
