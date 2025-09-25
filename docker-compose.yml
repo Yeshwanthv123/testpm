@@ -29,7 +29,7 @@ services:
       - ./backend/.env
     environment:
       PYTHONPATH: /app  
-      PM_QUESTIONS_CSV: /app/PM_Questions_dedup.csv
+      PM_QUESTIONS_CSV: /app/PM_Questions_8000_expanded_clean_final5.csv
       CORS_ORIGINS: http://localhost:3000,http://localhost:5173
       DATABASE_URL: postgresql://user:password@db:5432/mydatabase
     volumes:

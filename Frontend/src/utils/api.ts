@@ -12,7 +12,6 @@ export type QuestionDTO = {
   years_of_experience?: string | null;
 };
 
-// If your UI uses a slightly different shape, adapt here (kept 1:1 with backend response)
 export type FetchQuestionsParams = {
   company?: string | null;
   role?: string | null;        // APM | PM | Senior PM | Group PM | Principal PM | Director
@@ -56,6 +55,29 @@ function normalizeStr(v?: string | null): string | undefined {
   return s.length ? s : undefined;
 }
 
+// NEW: stable anonymous session key for no-repeat sampling
+function getSessionKey(): string {
+  const KEY = "pmbot_session_id";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    // Prefer crypto.randomUUID if available; otherwise fallback
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyCrypto: any = (typeof crypto !== "undefined" ? crypto : null);
+    if (anyCrypto?.randomUUID) {
+      id = anyCrypto.randomUUID();
+    } else {
+      // Simple fallback UUID-ish
+      id = "xxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 // ---- Public API ----------------------------------------------------------
 
 /**
@@ -67,6 +89,9 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
   const role = normalizeStr(params.role);
   const experience = normalizeStr(params.experience);
 
+  // NEW: include session so server can avoid repeating questions across runs
+  const session = getSessionKey();
+
   const url =
     API_BASE +
     INTERVIEW_PATH +
@@ -74,6 +99,7 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
       company,
       role,
       experience,
+      session, // <— NEW
     });
 
   let res: Response;
@@ -86,8 +112,6 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
       signal: params.signal,
     });
   } catch (networkErr) {
-    // Network error (server down / CORS / DNS etc.)
-    // Return a minimal, valid fallback so UI doesn't crash.
     return [
       {
         id: null,
@@ -103,11 +127,8 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
   }
 
   if (!res.ok) {
-    // Backend responded with error (e.g., 404 when DB empty)
     const detail = (() => {
       try {
-        // Try to parse FastAPI error shape {detail: "..."}
-        // but keep this fail-safe.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const j = (res as any)._jsonParsed ?? null;
         return j?.detail ?? null;
@@ -131,16 +152,13 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
     ];
   }
 
-  // Happy path
   try {
     const data = (await res.json()) as unknown;
 
-    // Validate minimally that it's an array of objects.
     if (!Array.isArray(data)) {
       throw new Error("Unexpected response shape");
     }
 
-    // Map to QuestionDTO, handling either 'text' or 'question' from backend
     const mapped: QuestionDTO[] = data.map((item: any) => {
       const qText = item?.question ?? item?.text ?? null;
       return {
@@ -154,7 +172,6 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
       };
     });
 
-    // Ensure array (and not empty fallback unless backend is really empty)
     if (!mapped.length) {
       return [
         {

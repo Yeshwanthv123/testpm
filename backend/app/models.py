@@ -58,3 +58,25 @@ class Question(Base):
         t = (self.text or self.question or "").strip()
         short = (t[:37] + "…") if len(t) > 38 else t
         return f"<Question id={self.id} company={self.company!r} level={self.experience_level!r} yoexp={self.years_of_experience!r} text={short!r}>"
+    # --- New: server-side memory of what we served to avoid repeats ---
+from sqlalchemy import Column, Integer, String, DateTime, func
+
+class ServedQuestion(Base):
+    __tablename__ = "served_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # If you wire auth later, store the internal user id here (nullable for anon)
+    user_id = Column(Integer, index=True, nullable=True)
+
+    # Stable anonymous browser session key (UUID from frontend/localStorage)
+    session_key = Column(String(64), index=True, nullable=True)
+
+    # Context of the pull
+    company = Column(String(128), index=True, nullable=True)
+    role = Column(String(64), index=True, nullable=True)
+
+    # The question we served (FK not required; keep it simple/robust)
+    question_id = Column(Integer, index=True, nullable=False)
+
+    served_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
