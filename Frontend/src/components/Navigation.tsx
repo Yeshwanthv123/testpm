@@ -9,6 +9,7 @@ interface NavigationProps {
   canGoBack?: boolean;
   user: UserType | null;
   onUpdateUser: (user: UserType) => void;
+  onLogout: () => void;
 }
 
 const Navigation: React.FC<NavigationProps> = ({
@@ -17,14 +18,15 @@ const Navigation: React.FC<NavigationProps> = ({
   canGoBack = true,
   user,
   onUpdateUser,
+  onLogout,
 }) => {
   const [showProfile, setShowProfile] = useState(false);
 
   const steps = [
     { id: "onboarding", label: "Onboarding", icon: Briefcase, description: "Set up your profile" },
-    { id: "setup",      label: "Interview Setup", icon: Home,      description: "Choose company & type" },
-    { id: "interview",  label: "Interview",       icon: BarChart3, description: "Take the interview" },
-    { id: "results",    label: "Results",         icon: BarChart3, description: "View your performance" },
+    { id: "setup", label: "Interview Setup", icon: Home, description: "Choose company & type" },
+    { id: "interview", label: "Interview", icon: BarChart3, description: "Take the interview" },
+    { id: "results", label: "Results", icon: BarChart3, description: "View your performance" },
   ] as const;
 
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
@@ -47,6 +49,9 @@ const Navigation: React.FC<NavigationProps> = ({
     return parts[0][0].toUpperCase();
   };
 
+  // ✅ During interview: disable navigation buttons (except Profile)
+  const isLocked = currentStep === "interview";
+
   return (
     <>
       <nav className="bg-white shadow-sm border-b sticky top-0 z-40">
@@ -56,18 +61,28 @@ const Navigation: React.FC<NavigationProps> = ({
             <div className="flex items-center space-x-4">
               {canGoBack && currentStepIndex > 0 && (
                 <button
-                  onClick={handleBackNavigation}
-                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors group"
-                  title="Go back"
+                  onClick={!isLocked ? handleBackNavigation : undefined}
+                  disabled={isLocked}
+                  className={`p-2 text-gray-600 rounded-lg transition-colors group ${
+                    isLocked
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:text-gray-900 hover:bg-gray-100"
+                  }`}
+                  title={isLocked ? "Navigation disabled during interview" : "Go back"}
                 >
                   <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                 </button>
               )}
 
               <button
-                onClick={handleHomeNavigation}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors group"
-                title="Go to Interview Setup"
+                onClick={!isLocked ? handleHomeNavigation : undefined}
+                disabled={isLocked}
+                className={`p-2 text-gray-600 rounded-lg transition-colors group ${
+                  isLocked
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:text-gray-900 hover:bg-gray-100"
+                }`}
+                title={isLocked ? "Navigation disabled during interview" : "Go to Interview Setup"}
               >
                 <Home className="w-5 h-5 group-hover:scale-110 transition-transform" />
               </button>
@@ -87,7 +102,7 @@ const Navigation: React.FC<NavigationProps> = ({
               {steps.map((step, index) => {
                 const Icon = step.icon;
                 const isActive = index === currentStepIndex;
-                const isEnabled = index <= currentStepIndex;
+                const isEnabled = index <= currentStepIndex && !isLocked; // ✅ disabled during interview
 
                 return (
                   <React.Fragment key={step.id}>
@@ -101,9 +116,13 @@ const Navigation: React.FC<NavigationProps> = ({
                           ? "bg-indigo-50 text-indigo-700"
                           : isEnabled
                           ? "text-gray-700 hover:bg-gray-100"
-                          : "text-gray-400 cursor-not-allowed",
+                          : "text-gray-400 cursor-not-allowed opacity-50",
                       ].join(" ")}
-                      title={step.description}
+                      title={
+                        isLocked
+                          ? "Navigation disabled during interview"
+                          : step.description
+                      }
                     >
                       <Icon className="w-4 h-4" />
                       <span className="text-sm font-medium">{step.label}</span>
@@ -134,9 +153,14 @@ const Navigation: React.FC<NavigationProps> = ({
         </div>
       </nav>
 
-      {/* Profile Modal */}
+      {/* ✅ Profile Modal */}
       {showProfile && user && (
-        <Profile user={user} onUpdateUser={onUpdateUser} onClose={() => setShowProfile(false)} />
+        <Profile
+          user={user}
+          onUpdateUser={onUpdateUser}
+          onClose={() => setShowProfile(false)}
+          onLogout={onLogout}
+        />
       )}
     </>
   );

@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  User, Settings, Crown, Calendar, BarChart3, Trophy,
-  Clock, Target, Star, ChevronRight, Edit3, Lock,
-  CreditCard, Bell, Shield, Download, Share2,
-  Award, TrendingUp, Users, MapPin, Briefcase,
-  Eye, EyeOff, Save, X, Check
+  User, Settings, Crown, Clock, Edit3, CreditCard, LogOut, Save, X
 } from 'lucide-react';
 import { User as UserType } from '../types';
 
@@ -14,125 +10,74 @@ interface ProfileProps {
   user: UserType;
   onUpdateUser: (user: UserType) => void;
   onClose: () => void;
+  onLogout: () => void; // ✅ Added this line
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'billing' | 'history'>('overview');
+const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose, onLogout }) => {
+  const [activeTab, setActiveTab] =
+    useState<'overview' | 'settings' | 'billing' | 'history'>('overview');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [showPasswordChange, setShowPasswordChange] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
 
-  // Use state derived from props for the form
   const [userProfile, setUserProfile] = useState({
     full_name: user.full_name || '',
     email: user.email || '',
     currentRole: user.currentRole || 'Not Set',
     experience: user.experience || '0-2',
     region: user.region || 'Not Set',
-    avatar: '👨‍💼', // This can remain a frontend-only mock for now
-    joinDate: '2024-01-15' // This can be replaced with real data if available
+    avatar: '👨‍💼',
+    joinDate: '2024-01-15'
   });
 
-  // Update state if the user prop changes
   useEffect(() => {
     setUserProfile({
-        full_name: user.full_name || '',
-        email: user.email || '',
-        currentRole: user.currentRole || 'Not Set',
-        experience: user.experience || '0-2',
-        region: user.region || 'Not Set',
-        avatar: '👨‍💼',
-        joinDate: '2024-01-15'
+      full_name: user.full_name || '',
+      email: user.email || '',
+      currentRole: user.currentRole || 'Not Set',
+      experience: user.experience || '0-2',
+      region: user.region || 'Not Set',
+      avatar: '👨‍💼',
+      joinDate: '2024-01-15'
     });
   }, [user]);
 
-
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
-
-  const [notifications, setNotifications] = useState({
-    emailUpdates: true,
-    practiceReminders: true,
-    performanceReports: false,
-    newFeatures: true
-  });
-  
   const handleProfileSave = async () => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-        alert("You are not logged in.");
-        return;
-    }
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
 
     try {
-        const response = await fetch(`${API_BASE}/auth/me`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                full_name: userProfile.full_name,
-                email: userProfile.email,
-                currentRole: userProfile.currentRole,
-                experience: userProfile.experience,
-                region: userProfile.region,
-            }),
-        });
+      const response = await fetch(`${API_BASE}/auth/me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          full_name: userProfile.full_name,
+          email: userProfile.email,
+          currentRole: userProfile.currentRole,
+          experience: userProfile.experience,
+          region: userProfile.region,
+        }),
+      });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || "Failed to update profile");
-        }
+      if (!response.ok) throw new Error('Failed to update profile');
 
-        const updatedUserData = await response.json();
-        onUpdateUser(updatedUserData); // Update the state in App.tsx
-        setIsEditingProfile(false);
-        alert('Profile updated successfully!');
-
-    } catch (error: any) {
-        alert(`Error: ${error.message}`);
+      const updatedUser = await response.json();
+      onUpdateUser(updatedUser);
+      setIsEditingProfile(false);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-
-  const handlePasswordChange = () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('Passwords do not match');
-      return;
-    }
-    // In a real app, you would have an endpoint to change the password
-    console.log("Password change requested", passwordData);
-    setShowPasswordChange(false);
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    alert('Password updated successfully (mocked)');
-  };
-
-
-  // Mock interview history
-  const recentInterviews = [
-    { id: '1', company: 'Google', type: 'Product Strategy', date: '2024-01-20', score: 85, duration: 45, status: 'completed' },
-    { id: '2', company: 'Meta', type: 'Behavioral', date: '2024-01-18', score: 78, duration: 40, status: 'completed' },
-    { id: '3', company: 'Amazon', type: 'Leadership', date: '2024-01-15', score: 92, duration: 50, status: 'completed' }
-  ];
-
-  const achievements = [
-    { icon: '🏆', title: 'Interview Master', description: 'Completed 10+ interviews', unlocked: true },
-    { icon: '⭐', title: 'High Performer', description: 'Scored 85+ average', unlocked: true },
-    { icon: '🎯', title: 'Consistent Practicer', description: '7-day streak', unlocked: true },
-    { icon: '🚀', title: 'Quick Learner', description: 'Improved by 20+ points', unlocked: false },
-    { icon: '💎', title: 'Premium Member', description: 'Upgraded to Pro plan', unlocked: false }
-  ];
-
-  const getScoreColor = (score: number) => {
-    if (score >= 85) return 'text-green-600 bg-green-100';
-    if (score >= 70) return 'text-blue-600 bg-blue-100';
-    if (score >= 60) return 'text-yellow-600 bg-yellow-100';
-    return 'text-red-600 bg-red-100';
+  // ✅ Correct instant logout
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    } catch {}
+    onClose();    // close the modal
+    onLogout();   // tells App.tsx to set currentStep = 'login' immediately
   };
 
   return (
@@ -150,7 +95,9 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
                 <p className="text-yellow-100">{userProfile.currentRole}</p>
                 <div className="flex items-center space-x-2 mt-1">
                   <Crown className="w-4 h-4" />
-                  <span className="text-sm">Pro Member since {new Date(userProfile.joinDate).toLocaleDateString()}</span>
+                  <span className="text-sm">
+                    Pro Member since {new Date(userProfile.joinDate).toLocaleDateString()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -165,38 +112,54 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
 
         <div className="flex h-[calc(90vh-120px)]">
           {/* Sidebar */}
-          <div className="w-64 bg-gray-50 border-r border-gray-200 p-6">
-            <nav className="space-y-2">
-              {[
-                { id: 'overview', label: 'Overview', icon: BarChart3 },
-                { id: 'settings', label: 'Account Settings', icon: Settings },
-                { id: 'billing', label: 'Billing & Plans', icon: CreditCard },
-                { id: 'history', label: 'Interview History', icon: Clock }
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-                      activeTab === tab.id
-                        ? 'bg-orange-100 text-orange-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
+          <div className="w-64 bg-gray-50 border-r border-gray-200 p-6 flex flex-col justify-between">
+            <div>
+              <nav className="space-y-2">
+                {[
+                  { id: 'overview', label: 'Overview', icon: User },
+                  { id: 'settings', label: 'Account Settings', icon: Settings },
+                  { id: 'billing', label: 'Billing & Plans', icon: CreditCard },
+                  { id: 'history', label: 'Interview History', icon: Clock },
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
+                        activeTab === tab.id
+                          ? 'bg-orange-100 text-orange-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* ✅ Persistent Log Out button */}
+            <div className="pt-4 border-t border-gray-200">
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-3 w-full px-4 py-3 text-red-600 hover:text-white
+                           hover:bg-gradient-to-r hover:from-orange-500 hover:to-red-500 rounded-xl
+                           font-semibold transition-all"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Log Out</span>
+              </button>
+            </div>
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 overflow-y-auto">
-             {activeTab === 'settings' && (
-              <div className="p-8">
+          <div className="flex-1 overflow-y-auto p-8">
+            {activeTab === 'settings' && (
+              <>
                 <h2 className="text-2xl font-bold text-gray-900 mb-8">Account Settings</h2>
+
                 <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200 mb-8">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-bold text-gray-900">Profile Information</h3>
@@ -208,6 +171,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
                       <span>{isEditingProfile ? 'Cancel' : 'Edit'}</span>
                     </button>
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
@@ -215,11 +179,15 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
                         <input
                           type="text"
                           value={userProfile.full_name}
-                          onChange={(e) => setUserProfile(prev => ({ ...prev, full_name: e.target.value }))}
+                          onChange={(e) =>
+                            setUserProfile((prev) => ({ ...prev, full_name: e.target.value }))
+                          }
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                         />
                       ) : (
-                        <div className="px-4 py-3 bg-gray-50 rounded-lg text-gray-900">{userProfile.full_name}</div>
+                        <div className="px-4 py-3 bg-gray-50 rounded-lg text-gray-900">
+                          {userProfile.full_name}
+                        </div>
                       )}
                     </div>
                     <div>
@@ -228,14 +196,19 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
                         <input
                           type="email"
                           value={userProfile.email}
-                          onChange={(e) => setUserProfile(prev => ({ ...prev, email: e.target.value }))}
+                          onChange={(e) =>
+                            setUserProfile((prev) => ({ ...prev, email: e.target.value }))
+                          }
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                         />
                       ) : (
-                        <div className="px-4 py-3 bg-gray-50 rounded-lg text-gray-900">{userProfile.email}</div>
+                        <div className="px-4 py-3 bg-gray-50 rounded-lg text-gray-900">
+                          {userProfile.email}
+                        </div>
                       )}
                     </div>
                   </div>
+
                   {isEditingProfile && (
                     <div className="flex justify-end space-x-3 mt-6">
                       <button
@@ -254,7 +227,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateUser, onClose }) => {
                     </div>
                   )}
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
