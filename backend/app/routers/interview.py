@@ -225,9 +225,17 @@ def _pick_questions(
             .all()
         )
         for q in rows:
+            
+            # --- START MODIFICATION ---
+            # This "experience guard" is now disabled as requested.
+            # The 'experience' parameter is still received but not used for filtering.
+            
             # final experience guard (keeps code simple)
-            if desired_experience and not _experience_match(desired_experience, getattr(q,"years_of_experience",None)):
-                continue
+            # if desired_experience and not _experience_match(desired_experience, getattr(q,"years_of_experience",None)):
+            #     continue
+            
+            # --- END MODIFICATION ---
+
             results.append(_serialize_question(q, sanitize_to))
             qid = getattr(q, "id", None)
             if qid is not None:
@@ -240,7 +248,7 @@ def _pick_questions(
     if wanted_company and wanted_role:
         remaining = add_from_query(
             db.query(Question).filter(and_(Question.company == wanted_company,
-                                           Question.experience_level == wanted_role)),
+                                          Question.experience_level == wanted_role)),
             sanitize_to=wanted_company, remaining=remaining)
 
     # A2) exact company (any role)
