@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
 
 # Reuse your project-wide Base
 from app.database import Base
@@ -24,8 +24,8 @@ class User(Base):
     experience = Column(String(64), nullable=True)
     currentRole = Column(String(128), nullable=True)
     region = Column(String(128), nullable=True)
-    # Storing as JSONB is efficient for arrays if using Postgres
-    targetCompanies = Column(JSONB, nullable=True) 
+    # Storing as JSON (works across DB backends)
+    targetCompanies = Column(JSON, nullable=True)
     # --- END ADDED FIELDS ---
 
     is_active = Column(Boolean, nullable=False, server_default="1")
@@ -80,3 +80,16 @@ class ServedQuestion(Base):
     question_id = Column(Integer, index=True, nullable=False)
 
     served_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+# ------------------------- Evaluation storage --------------------------- #
+class Evaluation(Base):
+    __tablename__ = "evaluations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(64), index=True, nullable=True)
+    user_id = Column(Integer, index=True, nullable=True)
+    overall_score = Column(Integer, nullable=True)
+    # Store per-question evaluation details as JSON (works across DB backends)
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -32,6 +32,8 @@ services:
       PM_QUESTIONS_CSV: /app/PM_Questions_8000_expanded_clean_final5.csv
       CORS_ORIGINS: http://localhost:3000,http://localhost:5173
       DATABASE_URL: postgresql://user:password@db:5432/mydatabase
+      # point the backend at the in-compose llm stub service so it can reach it via Docker DNS
+      LLM_API_URL: http://pmbot-llm-stub:11434
     volumes:
       - ./backend:/app        # <-- This brings `backend/PM_Questions_dedup.csv` into /app/
     ports:
@@ -52,10 +54,21 @@ services:
       NEXT_PUBLIC_API_BASE: http://localhost:8000
     ports:
       - "3000:3000"
-      # If your frontend serves on 5173 (Vite), change the line above to:
-      # - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    volumes:
+      - ./Frontend:/app
+      - /app/node_modules
     depends_on:
       - pmbot-backend
+    networks:
+      - pmbot-net
+
+  pmbot-llm-stub:
+    build:
+      context: ./backend/llm_stub
+    container_name: pmbot-llm-stub
+    ports:
+      - "11434:11434"
     networks:
       - pmbot-net
 

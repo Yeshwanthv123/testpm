@@ -1,14 +1,17 @@
-# frontend/Dockerfile
-FROM node:20-slim
+# Use a more specific base image for smaller size
+FROM node:20-alpine
+
 WORKDIR /app
 
-# Install deps
+# Copy only package files first for better caching
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm ci --only=production  # Use ci instead of install for faster, reliable builds
 
-# Copy the rest of the app
-COPY . .
+# Copy only necessary files
+COPY src/ ./src/
+COPY public/ ./public/
+COPY *.config.* ./
+COPY index.html ./
 
 EXPOSE 3000
-# Vite dev server (change to npm start if your script is "start")
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

@@ -1,0 +1,595 @@
+{
+    "openapi":  "3.1.0",
+    "info":  {
+                 "title":  "FastAPI",
+                 "version":  "0.1.0"
+             },
+    "paths":  {
+                  "/auth/register":  {
+                                         "post":  {
+                                                      "tags":  [
+                                                                   "auth"
+                                                               ],
+                                                      "summary":  "Register",
+                                                      "operationId":  "register_auth_register_post",
+                                                      "requestBody":  {
+                                                                          "content":  {
+                                                                                          "application/json":  {
+                                                                                                                   "schema":  "@{$ref=#/components/schemas/SignUpIn}"
+                                                                                                               }
+                                                                                      },
+                                                                          "required":  true
+                                                                      },
+                                                      "responses":  {
+                                                                        "200":  {
+                                                                                    "description":  "Successful Response",
+                                                                                    "content":  {
+                                                                                                    "application/json":  "@{schema=}"
+                                                                                                }
+                                                                                },
+                                                                        "422":  {
+                                                                                    "description":  "Validation Error",
+                                                                                    "content":  {
+                                                                                                    "application/json":  "@{schema=}"
+                                                                                                }
+                                                                                }
+                                                                    }
+                                                  }
+                                     },
+                  "/auth/login":  {
+                                      "post":  {
+                                                   "tags":  [
+                                                                "auth"
+                                                            ],
+                                                   "summary":  "Login",
+                                                   "operationId":  "login_auth_login_post",
+                                                   "requestBody":  {
+                                                                       "content":  {
+                                                                                       "application/json":  {
+                                                                                                                "schema":  "@{$ref=#/components/schemas/SignUpIn}"
+                                                                                                            }
+                                                                                   },
+                                                                       "required":  true
+                                                                   },
+                                                   "responses":  {
+                                                                     "200":  {
+                                                                                 "description":  "Successful Response",
+                                                                                 "content":  {
+                                                                                                 "application/json":  "@{schema=}"
+                                                                                             }
+                                                                             },
+                                                                     "422":  {
+                                                                                 "description":  "Validation Error",
+                                                                                 "content":  {
+                                                                                                 "application/json":  "@{schema=}"
+                                                                                             }
+                                                                             }
+                                                                 }
+                                               }
+                                  },
+                  "/auth/me":  {
+                                   "get":  {
+                                               "summary":  "Get Current User",
+                                               "operationId":  "get_current_user_auth_me_get",
+                                               "responses":  {
+                                                                 "200":  {
+                                                                             "description":  "Successful Response",
+                                                                             "content":  {
+                                                                                             "application/json":  "@{schema=}"
+                                                                                         }
+                                                                         }
+                                                             }
+                                           },
+                                   "patch":  {
+                                                 "tags":  [
+                                                              "auth"
+                                                          ],
+                                                 "summary":  "Update Me",
+                                                 "operationId":  "update_me_auth_me_patch",
+                                                 "parameters":  [
+                                                                    {
+                                                                        "name":  "authorization",
+                                                                        "in":  "header",
+                                                                        "required":  false,
+                                                                        "schema":  {
+                                                                                       "anyOf":  " ",
+                                                                                       "title":  "Authorization"
+                                                                                   }
+                                                                    }
+                                                                ],
+                                                 "requestBody":  {
+                                                                     "required":  true,
+                                                                     "content":  {
+                                                                                     "application/json":  {
+                                                                                                              "schema":  "@{$ref=#/components/schemas/UserUpdate}"
+                                                                                                          }
+                                                                                 }
+                                                                 },
+                                                 "responses":  {
+                                                                   "200":  {
+                                                                               "description":  "Successful Response",
+                                                                               "content":  {
+                                                                                               "application/json":  "@{schema=}"
+                                                                                           }
+                                                                           },
+                                                                   "422":  {
+                                                                               "description":  "Validation Error",
+                                                                               "content":  {
+                                                                                               "application/json":  "@{schema=}"
+                                                                                           }
+                                                                           }
+                                                               }
+                                             }
+                               },
+                  "/auth/refresh":  {
+                                        "post":  {
+                                                     "tags":  [
+                                                                  "auth"
+                                                              ],
+                                                     "summary":  "Refresh Access Token",
+                                                     "operationId":  "refresh_access_token_auth_refresh_post",
+                                                     "parameters":  [
+                                                                        {
+                                                                            "name":  "refresh_token",
+                                                                            "in":  "query",
+                                                                            "required":  true,
+                                                                            "schema":  {
+                                                                                           "type":  "string",
+                                                                                           "title":  "Refresh Token"
+                                                                                       }
+                                                                        }
+                                                                    ],
+                                                     "responses":  {
+                                                                       "200":  {
+                                                                                   "description":  "Successful Response",
+                                                                                   "content":  {
+                                                                                                   "application/json":  "@{schema=}"
+                                                                                               }
+                                                                               },
+                                                                       "422":  {
+                                                                                   "description":  "Validation Error",
+                                                                                   "content":  {
+                                                                                                   "application/json":  "@{schema=}"
+                                                                                               }
+                                                                               }
+                                                                   }
+                                                 }
+                                    },
+                  "/auth/google/url":  {
+                                           "get":  {
+                                                       "tags":  [
+                                                                    "auth"
+                                                                ],
+                                                       "summary":  "Google Oauth Url",
+                                                       "operationId":  "google_oauth_url_auth_google_url_get",
+                                                       "parameters":  [
+                                                                          {
+                                                                              "name":  "state",
+                                                                              "in":  "query",
+                                                                              "required":  false,
+                                                                              "schema":  {
+                                                                                             "anyOf":  " ",
+                                                                                             "title":  "State"
+                                                                                         }
+                                                                          },
+                                                                          {
+                                                                              "name":  "prompt_consent",
+                                                                              "in":  "query",
+                                                                              "required":  false,
+                                                                              "schema":  {
+                                                                                             "type":  "boolean",
+                                                                                             "default":  true,
+                                                                                             "title":  "Prompt Consent"
+                                                                                         }
+                                                                          }
+                                                                      ],
+                                                       "responses":  {
+                                                                         "200":  {
+                                                                                     "description":  "Successful Response",
+                                                                                     "content":  {
+                                                                                                     "application/json":  "@{schema=}"
+                                                                                                 }
+                                                                                 },
+                                                                         "422":  {
+                                                                                     "description":  "Validation Error",
+                                                                                     "content":  {
+                                                                                                     "application/json":  "@{schema=}"
+                                                                                                 }
+                                                                                 }
+                                                                     }
+                                                   }
+                                       },
+                  "/auth/google/callback":  {
+                                                "get":  {
+                                                            "tags":  [
+                                                                         "auth"
+                                                                     ],
+                                                            "summary":  "Google Oauth Callback",
+                                                            "operationId":  "google_oauth_callback_auth_google_callback_get",
+                                                            "parameters":  [
+                                                                               {
+                                                                                   "name":  "code",
+                                                                                   "in":  "query",
+                                                                                   "required":  false,
+                                                                                   "schema":  {
+                                                                                                  "anyOf":  " ",
+                                                                                                  "title":  "Code"
+                                                                                              }
+                                                                               },
+                                                                               {
+                                                                                   "name":  "state",
+                                                                                   "in":  "query",
+                                                                                   "required":  false,
+                                                                                   "schema":  {
+                                                                                                  "anyOf":  " ",
+                                                                                                  "title":  "State"
+                                                                                              }
+                                                                               },
+                                                                               {
+                                                                                   "name":  "redirect",
+                                                                                   "in":  "query",
+                                                                                   "required":  false,
+                                                                                   "schema":  {
+                                                                                                  "type":  "boolean",
+                                                                                                  "default":  true,
+                                                                                                  "title":  "Redirect"
+                                                                                              }
+                                                                               }
+                                                                           ],
+                                                            "responses":  {
+                                                                              "200":  {
+                                                                                          "description":  "Successful Response",
+                                                                                          "content":  {
+                                                                                                          "application/json":  "@{schema=}"
+                                                                                                      }
+                                                                                      },
+                                                                              "422":  {
+                                                                                          "description":  "Validation Error",
+                                                                                          "content":  {
+                                                                                                          "application/json":  "@{schema=}"
+                                                                                                      }
+                                                                                      }
+                                                                          }
+                                                        }
+                                            },
+                  "/auth/oauth/{provider}/start":  {
+                                                       "get":  {
+                                                                   "summary":  "Oauth Start",
+                                                                   "operationId":  "oauth_start_auth_oauth__provider__start_get",
+                                                                   "parameters":  [
+                                                                                      {
+                                                                                          "name":  "provider",
+                                                                                          "in":  "path",
+                                                                                          "required":  true,
+                                                                                          "schema":  {
+                                                                                                         "type":  "string",
+                                                                                                         "title":  "Provider"
+                                                                                                     }
+                                                                                      }
+                                                                                  ],
+                                                                   "responses":  {
+                                                                                     "200":  {
+                                                                                                 "description":  "Successful Response",
+                                                                                                 "content":  {
+                                                                                                                 "application/json":  "@{schema=}"
+                                                                                                             }
+                                                                                             },
+                                                                                     "422":  {
+                                                                                                 "description":  "Validation Error",
+                                                                                                 "content":  {
+                                                                                                                 "application/json":  "@{schema=}"
+                                                                                                             }
+                                                                                             }
+                                                                                 }
+                                                               }
+                                                   },
+                  "/auth/oauth/{provider}/callback":  {
+                                                          "get":  {
+                                                                      "summary":  "Oauth Callback",
+                                                                      "operationId":  "oauth_callback_auth_oauth__provider__callback_get",
+                                                                      "parameters":  [
+                                                                                         {
+                                                                                             "name":  "provider",
+                                                                                             "in":  "path",
+                                                                                             "required":  true,
+                                                                                             "schema":  {
+                                                                                                            "type":  "string",
+                                                                                                            "title":  "Provider"
+                                                                                                        }
+                                                                                         }
+                                                                                     ],
+                                                                      "responses":  {
+                                                                                        "200":  {
+                                                                                                    "description":  "Successful Response",
+                                                                                                    "content":  {
+                                                                                                                    "application/json":  "@{schema=}"
+                                                                                                                }
+                                                                                                },
+                                                                                        "422":  {
+                                                                                                    "description":  "Validation Error",
+                                                                                                    "content":  {
+                                                                                                                    "application/json":  "@{schema=}"
+                                                                                                                }
+                                                                                                }
+                                                                                    }
+                                                                  }
+                                                      },
+                  "/tts":  {
+                               "post":  {
+                                            "tags":  [
+                                                         "stubs"
+                                                     ],
+                                            "summary":  "Tts",
+                                            "operationId":  "tts_tts_post",
+                                            "responses":  {
+                                                              "200":  {
+                                                                          "description":  "Successful Response",
+                                                                          "content":  {
+                                                                                          "application/json":  "@{schema=}"
+                                                                                      }
+                                                                      }
+                                                          }
+                                        }
+                           },
+                  "/stt":  {
+                               "post":  {
+                                            "tags":  [
+                                                         "stubs"
+                                                     ],
+                                            "summary":  "Stt",
+                                            "operationId":  "stt_stt_post",
+                                            "responses":  {
+                                                              "200":  {
+                                                                          "description":  "Successful Response",
+                                                                          "content":  {
+                                                                                          "application/json":  "@{schema=}"
+                                                                                      }
+                                                                      }
+                                                          }
+                                        }
+                           },
+                  "/api/interview/questions":  {
+                                                   "get":  {
+                                                               "tags":  [
+                                                                            "interview"
+                                                                        ],
+                                                               "summary":  "Get Interview Questions",
+                                                               "operationId":  "get_interview_questions_api_interview_questions_get",
+                                                               "parameters":  [
+                                                                                  {
+                                                                                      "name":  "company",
+                                                                                      "in":  "query",
+                                                                                      "required":  false,
+                                                                                      "schema":  {
+                                                                                                     "anyOf":  " ",
+                                                                                                     "title":  "Company"
+                                                                                                 }
+                                                                                  },
+                                                                                  {
+                                                                                      "name":  "role",
+                                                                                      "in":  "query",
+                                                                                      "required":  false,
+                                                                                      "schema":  {
+                                                                                                     "anyOf":  " ",
+                                                                                                     "title":  "Role"
+                                                                                                 }
+                                                                                  },
+                                                                                  {
+                                                                                      "name":  "experience",
+                                                                                      "in":  "query",
+                                                                                      "required":  false,
+                                                                                      "schema":  {
+                                                                                                     "anyOf":  " ",
+                                                                                                     "title":  "Experience"
+                                                                                                 }
+                                                                                  },
+                                                                                  {
+                                                                                      "name":  "session",
+                                                                                      "in":  "query",
+                                                                                      "required":  false,
+                                                                                      "schema":  {
+                                                                                                     "anyOf":  " ",
+                                                                                                     "title":  "Session"
+                                                                                                 }
+                                                                                  },
+                                                                                  {
+                                                                                      "name":  "no_repeat_days",
+                                                                                      "in":  "query",
+                                                                                      "required":  false,
+                                                                                      "schema":  {
+                                                                                                     "type":  "integer",
+                                                                                                     "maximum":  365,
+                                                                                                     "minimum":  1,
+                                                                                                     "default":  90,
+                                                                                                     "title":  "No Repeat Days"
+                                                                                                 }
+                                                                                  }
+                                                                              ],
+                                                               "responses":  {
+                                                                                 "200":  {
+                                                                                             "description":  "Successful Response",
+                                                                                             "content":  {
+                                                                                                             "application/json":  "@{schema=}"
+                                                                                                         }
+                                                                                         },
+                                                                                 "422":  {
+                                                                                             "description":  "Validation Error",
+                                                                                             "content":  {
+                                                                                                             "application/json":  "@{schema=}"
+                                                                                                         }
+                                                                                         }
+                                                                             }
+                                                           }
+                                               },
+                  "/api/interview/start-with-jd":  {
+                                                       "post":  {
+                                                                    "tags":  [
+                                                                                 "interview"
+                                                                             ],
+                                                                    "summary":  "Start Interview With Jd",
+                                                                    "description":  "1. Analyze a Job Description (JD) using local AI service.\n2. Extract Company and Role (Experience Level).\n3. Fetch one matching question from the question pool.",
+                                                                    "operationId":  "start_interview_with_jd_api_interview_start_with_jd_post",
+                                                                    "requestBody":  {
+                                                                                        "content":  {
+                                                                                                        "application/json":  {
+                                                                                                                                 "schema":  "@{$ref=#/components/schemas/JDUpload}"
+                                                                                                                             }
+                                                                                                    },
+                                                                                        "required":  true
+                                                                                    },
+                                                                    "responses":  {
+                                                                                      "200":  {
+                                                                                                  "description":  "Successful Response",
+                                                                                                  "content":  {
+                                                                                                                  "application/json":  "@{schema=}"
+                                                                                                              }
+                                                                                              },
+                                                                                      "422":  {
+                                                                                                  "description":  "Validation Error",
+                                                                                                  "content":  {
+                                                                                                                  "application/json":  "@{schema=}"
+                                                                                                              }
+                                                                                              }
+                                                                                  }
+                                                                }
+                                                   },
+                  "/":  {
+                            "get":  {
+                                        "summary":  "Read Root",
+                                        "operationId":  "read_root__get",
+                                        "responses":  {
+                                                          "200":  {
+                                                                      "description":  "Successful Response",
+                                                                      "content":  {
+                                                                                      "application/json":  "@{schema=}"
+                                                                                  }
+                                                                  }
+                                                      }
+                                    }
+                        }
+              },
+    "components":  {
+                       "schemas":  {
+                                       "HTTPValidationError":  {
+                                                                   "properties":  {
+                                                                                      "detail":  {
+                                                                                                     "items":  {
+                                                                                                                   "$ref":  "#/components/schemas/ValidationError"
+                                                                                                               },
+                                                                                                     "type":  "array",
+                                                                                                     "title":  "Detail"
+                                                                                                 }
+                                                                                  },
+                                                                   "type":  "object",
+                                                                   "title":  "HTTPValidationError"
+                                                               },
+                                       "JDUpload":  {
+                                                        "properties":  {
+                                                                           "jd_text":  {
+                                                                                           "type":  "string",
+                                                                                           "title":  "Jd Text"
+                                                                                       }
+                                                                       },
+                                                        "type":  "object",
+                                                        "required":  [
+                                                                         "jd_text"
+                                                                     ],
+                                                        "title":  "JDUpload",
+                                                        "description":  "Input schema for starting an interview with a JD upload."
+                                                    },
+                                       "SignUpIn":  {
+                                                        "properties":  {
+                                                                           "email":  {
+                                                                                         "type":  "string",
+                                                                                         "format":  "email",
+                                                                                         "title":  "Email"
+                                                                                     },
+                                                                           "password":  {
+                                                                                            "type":  "string",
+                                                                                            "title":  "Password"
+                                                                                        },
+                                                                           "full_name":  {
+                                                                                             "anyOf":  [
+                                                                                                           "@{type=string}",
+                                                                                                           "@{type=null}"
+                                                                                                       ],
+                                                                                             "title":  "Full Name"
+                                                                                         }
+                                                                       },
+                                                        "type":  "object",
+                                                        "required":  [
+                                                                         "email",
+                                                                         "password"
+                                                                     ],
+                                                        "title":  "SignUpIn"
+                                                    },
+                                       "UserUpdate":  {
+                                                          "properties":  {
+                                                                             "full_name":  {
+                                                                                               "anyOf":  [
+                                                                                                             "@{type=string}",
+                                                                                                             "@{type=null}"
+                                                                                                         ],
+                                                                                               "title":  "Full Name"
+                                                                                           },
+                                                                             "experience":  {
+                                                                                                "anyOf":  [
+                                                                                                              "@{type=string}",
+                                                                                                              "@{type=null}"
+                                                                                                          ],
+                                                                                                "title":  "Experience"
+                                                                                            },
+                                                                             "currentRole":  {
+                                                                                                 "anyOf":  [
+                                                                                                               "@{type=string}",
+                                                                                                               "@{type=null}"
+                                                                                                           ],
+                                                                                                 "title":  "Currentrole"
+                                                                                             },
+                                                                             "region":  {
+                                                                                            "anyOf":  [
+                                                                                                          "@{type=string}",
+                                                                                                          "@{type=null}"
+                                                                                                      ],
+                                                                                            "title":  "Region"
+                                                                                        },
+                                                                             "targetCompanies":  {
+                                                                                                     "anyOf":  [
+                                                                                                                   "@{items=; type=array}",
+                                                                                                                   "@{type=null}"
+                                                                                                               ],
+                                                                                                     "title":  "Targetcompanies"
+                                                                                                 }
+                                                                         },
+                                                          "type":  "object",
+                                                          "title":  "UserUpdate"
+                                                      },
+                                       "ValidationError":  {
+                                                               "properties":  {
+                                                                                  "loc":  {
+                                                                                              "items":  {
+                                                                                                            "anyOf":  " "
+                                                                                                        },
+                                                                                              "type":  "array",
+                                                                                              "title":  "Location"
+                                                                                          },
+                                                                                  "msg":  {
+                                                                                              "type":  "string",
+                                                                                              "title":  "Message"
+                                                                                          },
+                                                                                  "type":  {
+                                                                                               "type":  "string",
+                                                                                               "title":  "Error Type"
+                                                                                           }
+                                                                              },
+                                                               "type":  "object",
+                                                               "required":  [
+                                                                                "loc",
+                                                                                "msg",
+                                                                                "type"
+                                                                            ],
+                                                               "title":  "ValidationError"
+                                                           }
+                                   }
+                   }
+}

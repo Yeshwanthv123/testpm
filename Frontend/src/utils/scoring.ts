@@ -5,7 +5,17 @@ export const calculateSkillScore = (
   questions: Question[],
   skill: string
 ): number => {
-  const relevantQuestions = questions.filter(q => q.skills.includes(skill));
+  // Match skills case-insensitively and allow partial matches so that
+  // backend-derived skills (e.g. "Strategy") map to frontend skill names
+  // (e.g. "Product Strategy"). This makes scoring robust across sources.
+  const relevantQuestions = questions.filter((q) => {
+    if (!Array.isArray(q.skills) || !q.skills.length) return false;
+    const target = (skill || '').toLowerCase();
+    return q.skills.some((s) => {
+      const ss = String(s || '').toLowerCase();
+      return ss === target || ss.includes(target) || target.includes(ss);
+    });
+  });
   if (relevantQuestions.length === 0) return 0;
 
   let totalScore = 0;
@@ -15,8 +25,9 @@ export const calculateSkillScore = (
     const answer = answers.find(a => a.questionId === question.id);
     if (answer) {
       // Mock scoring algorithm - in real app, this would use AI
-      const wordCount = answer.answer.split(' ').length;
-      const timeEfficiency = Math.min(answer.timeSpent / question.timeLimit, 1);
+      const wordCount = String(answer.answer || '').split(/\s+/).filter(Boolean).length;
+      const timeLimit = question.timeLimit && question.timeLimit > 0 ? question.timeLimit : 180;
+      const timeEfficiency = Math.min((answer.timeSpent || 0) / timeLimit, 1);
       const contentScore = Math.min(wordCount / 50, 1) * 70; // Up to 70 points for content
       const efficiencyScore = (1 - timeEfficiency) * 30; // Up to 30 points for efficiency
       

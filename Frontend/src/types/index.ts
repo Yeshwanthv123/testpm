@@ -65,6 +65,15 @@ export interface InterviewResult {
   improvements: string[];
   peerComparison: PeerComparison;
   detailedFeedback: string;
+  // Optional detailed per-question AI evaluations returned by the backend
+  perQuestionEvaluations?: Array<{
+    question: Question | { [key: string]: any };
+    model_answer?: string;
+    score?: number;
+    strengths?: string[];
+    weaknesses?: string[];
+    feedback?: string;
+  }>;
 }
 
 export interface PeerComparison {

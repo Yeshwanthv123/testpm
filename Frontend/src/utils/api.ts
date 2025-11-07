@@ -1,5 +1,3 @@
-// Frontend/src/utils/api.ts
-
 // ---- Types ---------------------------------------------------------------
 
 export type QuestionDTO = {
@@ -10,12 +8,14 @@ export type QuestionDTO = {
   complexity?: string | null;
   experience_level?: string | null;
   years_of_experience?: string | null;
+  // ADDED: skills to match backend output from _serialize_question
+  skills?: string[] | null;
 };
 
 export type FetchQuestionsParams = {
   company?: string | null;
-  role?: string | null;        // APM | PM | Senior PM | Group PM | Principal PM | Director
-  experience?: string | null;  // "0-2" | "2-4" | "5-8" | "8+"
+  role?: string | null; // APM | PM | Senior PM | Group PM | Principal PM | Director
+  experience?: string | null; // "0-2" | "2-4" | "5-8" | "8+"
   signal?: AbortSignal;
 };
 
@@ -24,9 +24,9 @@ export type FetchQuestionsParams = {
 /**
  * Resolve API base URL without changing other files.
  * Priority:
- *   1) Vite env: import.meta.env.VITE_API_BASE
- *   2) Global injected var: (window as any).__API_BASE__
- *   3) Fallback: http://localhost:8000
+ * 1) Vite env: import.meta.env.VITE_API_BASE
+ * 2) Global injected var: (window as any).__API_BASE__
+ * 3) Fallback: http://localhost:8000
  */
 function getApiBase(): string {
   const viteEnv = (import.meta as any)?.env?.VITE_API_BASE;
@@ -37,6 +37,8 @@ function getApiBase(): string {
 
 const API_BASE = getApiBase();
 const INTERVIEW_PATH = "/api/interview/questions";
+// --- ADDED THIS LINE ---
+const INTERVIEW_JD_PATH = "/api/interview/start-with-jd";
 
 // ---- Helpers -------------------------------------------------------------
 
@@ -169,6 +171,7 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
         complexity: item?.complexity ?? null,
         experience_level: item?.experience_level ?? null,
         years_of_experience: item?.years_of_experience ?? null,
+        skills: item?.skills ?? null, // Added skills
       };
     });
 
@@ -203,6 +206,129 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
     ];
   }
 }
+
+//
+// --- START OF NEW FUNCTION ---
+//
+
+/**
+ * Fetch a single interview question based on a Job Description (JD).
+ * Returns an array containing a single QuestionDTO.
+ */
+export async function startInterviewWithJD(
+  jdText: string,
+  params: { signal?: AbortSignal }
+): Promise<QuestionDTO[]> {
+  const url = API_BASE + INTERVIEW_JD_PATH;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ jd_text: jdText }),
+      signal: params.signal,
+    });
+  } catch (networkErr) {
+    return [
+      {
+        id: null,
+        question:
+          "We couldn’t reach the interview service to analyze the JD. Please ensure the backend is running and CORS allows this origin.",
+        company: "From JD",
+        category: null,
+        complexity: null,
+        experience_level: null,
+        years_of_experience: null,
+      },
+    ];
+  }
+
+  if (!res.ok) {
+     const detail = (() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const j = (res as any)._jsonParsed ?? null;
+        return j?.detail ?? null;
+      } catch {
+        return null;
+      }
+    })();
+    return [
+      {
+        id: null,
+        question:
+          detail ||
+          `AI service returned ${res.status}. Make sure the '/api/interview/start-with-jd' endpoint is working.`,
+        company: "From JD",
+        category: null,
+        complexity: null,
+        experience_level: null,
+        years_of_experience: null,
+      },
+    ];
+  }
+
+  try {
+    // The backend returns a SINGLE question object (or sometimes a wrapper like { data: { ... } }).
+    const item = (await res.json()) as unknown;
+
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error("Unexpected response shape: expected a single object");
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyItem = item as any;
+    // Support both direct object and wrapped responses { data: { ... } }
+    const payload = anyItem?.data ?? anyItem;
+
+    // The question text may exist as 'question' or 'text', and in some shapes
+    // it could be nested; be permissive.
+    const qText =
+      payload?.question ??
+      payload?.text ??
+      (typeof payload?.question === 'object' ? payload?.question?.text : null) ??
+      null;
+
+    // If the AI returns metadata under `ai_extracted`, prefer those fields
+    const aiMeta = payload?.ai_extracted ?? null;
+
+    const mapped: QuestionDTO = {
+      id: payload?.id ?? null,
+      question: typeof qText === "string" ? qText : qText == null ? null : String(qText),
+      company: payload?.company ?? aiMeta?.company_name ?? null,
+      category: payload?.category ?? null,
+      complexity: payload?.complexity ?? null,
+      // Preference: explicit experience_level, otherwise fall back to ai_extracted.role
+      experience_level: payload?.experience_level ?? aiMeta?.role ?? null,
+      years_of_experience: payload?.years_of_experience ?? null,
+      skills: payload?.skills ?? null,
+    };
+
+    // Return it as an array with one item, so InterviewSetup.tsx can treat it
+    // the same as fetchInterviewQuestions
+    return [mapped];
+
+  } catch (err) {
+    return [
+      {
+        id: null,
+        question:
+          "Failed to parse the question from the AI service. Check that the backend returns JSON and matches the expected shape.",
+        company: "From JD",
+        category: null,
+        complexity: null,
+        experience_level: null,
+        years_of_experience: null,
+      },
+    ];
+  }
+}
+
+// --- END OF NEW FUNCTION ---
 
 /**
  * Optional: small health check you can call from your app if needed.

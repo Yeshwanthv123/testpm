@@ -55,16 +55,6 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
     return map[r] ?? role.trim();
   }
 
-  function normalizeExperience(exp?: string | null): string | undefined {
-    if (!exp) return undefined;
-    const e = exp.trim().toLowerCase();
-    if (['0-2', '2-4', '5-8', '8+'].includes(e)) return e;
-    if (e.includes('0') && e.includes('2')) return '0-2';
-    if (e.includes('2') && e.includes('4')) return '2-4';
-    if (e.includes('5') && e.includes('8')) return '5-8';
-    if (e.includes('8')) return '8+';
-    return exp.trim();
-  }
 
   // Extended company list with search functionality
   const allCompanies = [
@@ -256,6 +246,109 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
       );
 
   const generalPMType = interviewTypes.find(type => type.isGeneral);
+  // Extract company and role from a pasted Job Description (JD).
+  // Goal: return only the company name and a normalized role token like 'PM' or 'Senior PM'.
+  function extractCompanyAndRole(jdText: string): { company?: string; role?: string } {
+    if (!jdText) return {};
+    const s = jdText;
+
+    // 1) Company: look for explicit 'Company:' line
+    const companyMatch = s.match(/Company\s*[:\-]\s*(.+)/i);
+    let company = companyMatch ? companyMatch[1].trim() : undefined;
+
+    // 2) If not found, try to match known companies from the list
+    if (!company) {
+      const lowered = s.toLowerCase();
+      for (const c of allCompanies) {
+        if (lowered.includes(c.name.toLowerCase())) {
+          company = c.name;
+          break;
+        }
+      }
+    }
+
+    // 3) Role: look for 'Job Title' or 'Title' lines
+    const titleMatch = s.match(/Job Title\s*[:\-]\s*(.+)/i) || s.match(/Title\s*[:\-]\s*(.+)/i);
+    let rawRole = titleMatch ? titleMatch[1].trim() : undefined;
+
+    // 4) If not found, attempt to find common role phrases
+    if (!rawRole) {
+      const roleCandidates = [
+        /senior\s+product\s+manager/i,
+        /product\s+manager/i,
+        /associate\s+product\s+manager/i,
+        /principal\s+product\s+manager/i,
+        /group\s+product\s+manager/i,
+        /director/i,
+        /head\s+of\s+product/i,
+        /pm\b/i
+      ];
+      for (const rx of roleCandidates) {
+        const m = s.match(rx);
+        if (m) {
+          rawRole = m[0];
+          break;
+        }
+      }
+    }
+
+    const roleText = rawRole ? rawRole.toLowerCase() : undefined;
+    let role: string | undefined = undefined;
+    if (roleText) {
+      if (roleText.includes('associate')) role = 'APM';
+      else if (roleText.includes('senior') || roleText.includes('sr')) role = 'Senior PM';
+      else if (roleText.includes('principal')) role = 'Principal PM';
+      else if (roleText.includes('group')) role = 'Group PM';
+      else if (roleText.includes('director')) role = 'Director';
+      else if (roleText.includes('product') || roleText.includes('pm')) role = 'PM';
+    }
+
+    return { company, role };
+  }
+  // Helper to proceed with JD: selects a sensible default interview type and
+  // ensures the summary/start section is visible. This makes the "Proceed with JD"
+  // button more reliable across environments.
+  const handleProceedWithJD = async () => {
+    if (!jobDescription.trim()) return;
+
+    setIsFetchingQuestions(true);
+
+    // Choose a type synchronously so we can pass it to onStartInterview
+    const chosenType = generalPMType ?? interviewTypes[0] ?? null;
+    if (chosenType) setSelectedType(chosenType);
+    setUseJobDescription(true);
+
+    try {
+      // Extract company and role locally from the pasted JD
+      const { company: extractedCompany, role: extractedRole } = extractCompanyAndRole(jobDescription);
+      const derivedCompany = extractedCompany || selectedCompany || 'Generic';
+      const derivedRole = extractedRole || normalizeRole(user.currentRole) || undefined;
+
+      const apiResult = await fetchInterviewQuestions({
+        company: derivedCompany,
+        role: derivedRole,
+      });
+
+  let questions = (apiResult as unknown) as Question[];
+
+      // If we have no chosenType (edge case), pick a fallback
+      const startType = chosenType ?? interviewTypes[0];
+      onStartInterview(startType as any, questions, jobDescription);
+
+      // Scroll to summary for UX (if rendered)
+      setTimeout(() => {
+        try {
+          const el = document.getElementById('interview-summary');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {}
+      }, 120);
+    } catch (err) {
+      console.error('Failed to start interview with JD:', err);
+      alert('Failed to start interview from JD. Please try again.');
+    } finally {
+      setIsFetchingQuestions(false);
+    }
+  };
   
   const handleCompanySelect = (companyId: string) => {
     setSelectedCompany(companyId);
@@ -272,16 +365,66 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setJdFile(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        setJobDescription(content);
+    if (!file) return;
+    setJdFile(file);
+
+    // Async parse file contents for supported types (pdf, docx, txt, doc fallback)
+    (async () => {
+      const name = file.name || '';
+      const ext = name.split('.').pop()?.toLowerCase() || '';
+      try {
+        if (ext === 'pdf') {
+          // PDF parsing using pdfjs-dist
+          // dynamic import so devs without dependency won't break until feature used
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const pdfjs = await import('pdfjs-dist/legacy/build/pdf');
+          // try to set workerSrc to CDN; if blocked it's still OK
+          try {
+            // @ts-ignore
+            pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+          } catch {}
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          let text = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            // eslint-disable-next-line no-await-in-loop
+            const page = await pdf.getPage(i);
+            // eslint-disable-next-line no-await-in-loop
+            const content = await page.getTextContent();
+            const pageText = content.items.map((it: any) => (it.str || '')).join(' ');
+            text += pageText + '\n';
+          }
+          setJobDescription(text);
+          setUseJobDescription(true);
+          return;
+        }
+
+        if (ext === 'docx') {
+          // DOCX parsing using mammoth
+          const mammoth = await import('mammoth');
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          const text = result.value || '';
+          setJobDescription(text);
+          setUseJobDescription(true);
+          return;
+        }
+
+        // Fallback: read as text for .txt and others
+        const txt = await file.text();
+        setJobDescription(txt);
         setUseJobDescription(true);
-      };
-      reader.readAsText(file);
-    }
+      } catch (err) {
+        console.error('Failed to parse uploaded file, falling back to text read', err);
+        try {
+          const txt = await file.text();
+          setJobDescription(txt);
+          setUseJobDescription(true);
+        } catch (err2) {
+          console.error('Failed to read file as text', err2);
+        }
+      }
+    })();
   };
 
   const handleStartInterview = async () => {
@@ -292,15 +435,28 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
 
     setIsFetchingQuestions(true);
     try {
-      // NOTE: use object-form to match utils/api.ts
-      const apiResult = await fetchInterviewQuestions({
-        company: (selectedCompany || 'Generic'),
-        role: normalizeRole(user.currentRole),
-        experience: normalizeExperience(user.experience),
-      });
+      let questions: Question[] = [];
 
-      // If your `Question` type differs from API result, cast safely
-      const questions = (apiResult as unknown) as Question[];
+      if (useJobDescription && jobDescription.trim()) {
+        // ✅ New JD-aware logic
+    const { company: extractedCompany, role: extractedRole } = extractCompanyAndRole(jobDescription);
+  const derivedCompany = extractedCompany || selectedCompany || "Generic";
+    const derivedRole = extractedRole || normalizeRole(user.currentRole) || undefined;
+
+        const apiResult = await fetchInterviewQuestions({
+          company: derivedCompany,
+          role: derivedRole,
+        });
+
+  questions = (apiResult as unknown) as Question[];
+      } else {
+        // 🔹 Original fallback path untouched
+        const apiResult = await fetchInterviewQuestions({
+          company: (selectedCompany || 'Generic'),
+          role: normalizeRole(user.currentRole),
+        });
+        questions = (apiResult as unknown) as Question[];
+      }
 
       onStartInterview(selectedType, questions, useJobDescription ? jobDescription : undefined);
     } catch (error) {
@@ -521,10 +677,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
               </button>
               <button
                 disabled={!jobDescription.trim()}
-                onClick={() => {
-                  setUseJobDescription(true);
-                  if (generalPMType) setSelectedType(generalPMType);
-                }}
+                onClick={handleProceedWithJD}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium text-sm md:text-base"
               >
                 Proceed with JD
@@ -535,7 +688,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
 
         {/* Section 3: Selected Interview Summary & Start */}
         {selectedType && (
-          <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 border border-gray-100">
+          <div id="interview-summary" className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 border border-gray-100">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-6 md:mb-8">
               <div className="flex-1 mb-6 lg:mb-0">
                 <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">

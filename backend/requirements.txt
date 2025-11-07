@@ -16,3 +16,6 @@ python-multipart
 google-auth
 pandas
 requests
+pandas
+requests
+sentence-transformers
