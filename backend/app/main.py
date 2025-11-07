@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from app.routers import auth, oauth, stubs, interview
+from app.routers import auth, oauth, stubs, interview,answer
 from app.config import settings
 
 app = FastAPI()
@@ -23,6 +23,7 @@ app.include_router(stubs.router)
 
 # IMPORTANT: mount interview under /api so the frontend path /api/interview/questions works
 app.include_router(interview.router, prefix="/api")
+app.include_router(answer.router, prefix="/api")
 
 @app.get("/")
 def read_root():

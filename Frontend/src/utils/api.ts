@@ -216,3 +216,27 @@ export async function pingApi(): Promise<boolean> {
     return false;
   }
 }
+
+// ---------------- Answer Evaluation ----------------
+
+export async function evaluateAnswer(question: string, userAnswer: string) {
+  if (!question || !userAnswer) {
+    throw new Error("Both question and userAnswer are required.");
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/answer/evaluate/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, user_answer: userAnswer }),
+    });
+
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error evaluating answer:", error);
+    throw error;
+  }
+}
+
