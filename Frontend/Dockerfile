@@ -1,17 +1,15 @@
-# Use a more specific base image for smaller size
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Copy only package files first for better caching
+# Install dependencies first for better cache behavior
 COPY package*.json ./
-RUN npm ci --only=production  # Use ci instead of install for faster, reliable builds
+RUN if [ -f package-lock.json ]; then npm ci --silent; else npm install --silent; fi
 
-# Copy only necessary files
-COPY src/ ./src/
-COPY public/ ./public/
-COPY *.config.* ./
-COPY index.html ./
+# Copy application files. The project doesn't include a `public/` folder,
+# so copy the workspace rather than attempting to copy a missing directory.
+COPY . .
 
 EXPOSE 3000
+# Run Vite dev server. If you use a different script in production, adjust accordingly.
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

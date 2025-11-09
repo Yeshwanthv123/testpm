@@ -1,17 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
 
-
-# Prefer `.env` if present; otherwise fall back to `.env.local` which is a
-# safe, committable local defaults file included in the repo to make on-clone
-# runs easier for developers.
-_env_file = ".env"
-if not os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env")):
-    # look in the package root
-    if os.path.exists(os.path.join(os.path.dirname(__file__), "..", ".env.local")):
-        _env_file = ".env.local"
-
-
 class Settings(BaseSettings):
     APP_NAME: str = "PMBOT Auth Backend"
     JWT_SECRET: str = "dev-secret"
@@ -36,7 +25,8 @@ class Settings(BaseSettings):
     PM_QUESTIONS_CSV: str | None = None
 
     class Config:
-        env_file = _env_file
+        # Prefer the mounted /app/.env (docker-compose mounts backend to /app)
+        env_file = "/app/.env" if os.path.exists("/app/.env") else ".env"
         case_sensitive = False
         extra = "ignore"  # ✅ allow future envs without crashing
 

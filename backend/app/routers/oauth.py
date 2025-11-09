@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
+import os
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db, SessionLocal, Base
@@ -9,7 +10,8 @@ from ..security import create_access_token
 router = APIRouter()
 
 # Setup OAuth
-config = Config('.env')
+env_path = '/app/.env' if os.path.exists('/app/.env') else '.env'
+config = Config(env_path)
 oauth = OAuth(config)
 oauth.register(
     name='google',
