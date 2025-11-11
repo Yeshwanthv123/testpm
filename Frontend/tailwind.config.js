@@ -5,4 +5,9 @@ export default {
     extend: {},
   },
   plugins: [],
+  corePlugins: {
+    preflight: true,
+  },
+  // Add custom styles
+  safelist: ['custom-scrollbar'],
 };

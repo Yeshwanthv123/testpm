@@ -10,6 +10,34 @@ interface NavigationProps {
   user: UserType | null;
   onUpdateUser: (user: UserType) => void;
   onLogout: () => void;
+  onStartInterview?: (interviewType: any, questions: any[], jd?: string) => void;
+  onViewResult?: (past: any) => void;
+}
+
+class ProfileErrorBoundary extends React.Component<{children?: React.ReactNode}, {hasError: boolean, error?: any}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any) {
+    console.error('Error rendering profile modal', error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 bg-white flex items-center justify-center z-50">
+          <div className="text-center">
+            <h3 className="text-xl font-bold">Something went wrong</h3>
+            <p className="text-sm text-gray-600 mt-2">Failed to open profile. Please refresh the page.</p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children as any;
+  }
 }
 
 const Navigation: React.FC<NavigationProps> = ({
@@ -19,6 +47,8 @@ const Navigation: React.FC<NavigationProps> = ({
   user,
   onUpdateUser,
   onLogout,
+  onStartInterview,
+  onViewResult,
 }) => {
   const [showProfile, setShowProfile] = useState(false);
 
@@ -155,12 +185,16 @@ const Navigation: React.FC<NavigationProps> = ({
 
       {/* ✅ Profile Modal */}
       {showProfile && user && (
-        <Profile
-          user={user}
-          onUpdateUser={onUpdateUser}
-          onClose={() => setShowProfile(false)}
-          onLogout={onLogout}
-        />
+        <ProfileErrorBoundary>
+          <Profile
+            user={user}
+            onUpdateUser={onUpdateUser}
+            onClose={() => setShowProfile(false)}
+            onLogout={onLogout}
+            onStartInterview={onStartInterview}
+            onViewResult={onViewResult}
+          />
+        </ProfileErrorBoundary>
       )}
     </>
   );

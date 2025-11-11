@@ -4,6 +4,8 @@ import random
 import re
 import concurrent.futures
 from datetime import timedelta, datetime
+from sqlalchemy import inspect
+from ..logger import logger
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Header
 from sqlalchemy.orm import Session
@@ -13,7 +15,7 @@ from ..database import get_db
 from ..models import Question, ServedQuestion, Evaluation, User
 from .. import schemas
 from ..ai_services import ai_service
-from ..routers.auth import _decode_bearer
+from ..routers.auth import _decode_bearer, get_current_user
 from fastapi.encoders import jsonable_encoder
 
 router = APIRouter(prefix="/interview", tags=["interview"])
@@ -24,20 +26,31 @@ TOTAL_QUESTIONS_TO_RETURN = 10
 NO_REPEAT_DAYS_DEFAULT = 90
 
 
-# ---------------- Role normalization ---------------- #
-_ROLE_ALIASES: Dict[str, str] = {
-    "apm": "APM", "associate pm": "APM", "product manager": "PM", "pm": "PM",
-    "senior pm": "Senior PM", "sr pm": "Senior PM", "sr. pm": "Senior PM",
-    "group pm": "Group PM", "gpm": "Group PM",
-    "principal pm": "Principal PM", "pr. pm": "Principal PM",
-    "director": "Director", "product director": "Director",
-}
-
-def normalize_role(role: Optional[str]) -> Optional[str]:
-    if not role:
+# -------------- Experience Level normalization (no longer using role) -------- #
+def normalize_experience(experience: Optional[str]) -> Optional[str]:
+    """
+    Normalize experience level string (e.g., '0-2', '2-4', '5-8', '8+')
+    to match the Years of Experience column in the CSV.
+    """
+    if not experience:
         return None
-    key = role.strip().lower()
-    return _ROLE_ALIASES.get(key, role.strip())
+    exp = experience.strip().lower()
+    # Map common patterns to the CSV format
+    exp_map = {
+        "0-1": "0-2",
+        "0-2": "0-2",
+        "1-2": "0-2",
+        "2-4": "2-4",
+        "2-5": "2-4",
+        "4-5": "2-4",
+        "5-8": "5-8",
+        "5-7": "5-8",
+        "7-8": "5-8",
+        "8+": "8+",
+        "8 years": "8+",
+        "9+": "8+",
+    }
+    return exp_map.get(exp, experience.strip())
 
 
 # -------------- Experience matching --------------- #
@@ -198,20 +211,17 @@ def _pick_questions(
 ) -> List[Dict[str, Any]]:
 
     wanted_company = normalize_company(company)
-    wanted_role = normalize_role(role)
-    desired_experience = experience.strip() if experience else None
+    wanted_experience = normalize_experience(experience)
     horizon = datetime.utcnow() - timedelta(days=no_repeat_days)
 
     exclude_ids: List[int] = []
-    if session_key and (wanted_company or wanted_role):
+    if session_key and (wanted_company or wanted_experience):
         q_excl = db.query(ServedQuestion.question_id).filter(
             ServedQuestion.session_key == session_key,
             ServedQuestion.served_at >= horizon,
         )
         if wanted_company:
             q_excl = q_excl.filter(ServedQuestion.company == wanted_company)
-        if wanted_role:
-            q_excl = q_excl.filter(ServedQuestion.role == wanted_role)
         exclude_ids = [x[0] for x in q_excl.all()]
 
     results: List[Dict[str, Any]] = []
@@ -236,31 +246,30 @@ def _pick_questions(
 
     remaining = limit
 
-    if wanted_company and wanted_role:
+    # 1. Try to match both company and experience level (most specific)
+    if wanted_company and wanted_experience:
         remaining = add_from_query(
             db.query(Question).filter(and_(Question.company == wanted_company,
-                                          Question.experience_level == wanted_role)),
+                                          Question.years_of_experience == wanted_experience)),
             sanitize_to=wanted_company, remaining=remaining)
 
+    # 2. Try company + any experience (company is important)
     if remaining > 0 and wanted_company:
         remaining = add_from_query(
             db.query(Question).filter(Question.company == wanted_company),
             sanitize_to=wanted_company, remaining=remaining)
 
-    if remaining > 0:
+    # 3. Try desired experience + generic/any company (experience is important)
+    if remaining > 0 and wanted_experience:
         remaining = add_from_query(
-            db.query(Question).filter(Question.company == "our company"),
-            sanitize_to="our company", remaining=remaining)
+            db.query(Question).filter(Question.years_of_experience == wanted_experience),
+            sanitize_to=wanted_company or "Generic", remaining=remaining)
 
-    if remaining > 0 and wanted_role:
-        remaining = add_from_query(
-            db.query(Question).filter(Question.experience_level == wanted_role),
-            sanitize_to=wanted_company or "our company", remaining=remaining)
-
+    # 4. If still not enough, get any questions
     if remaining > 0:
         remaining = add_from_query(
             db.query(Question),
-            sanitize_to=wanted_company or "our company", remaining=remaining)
+            sanitize_to=wanted_company or "Generic", remaining=remaining)
 
     if session_key and chosen_ids:
         bulk = [
@@ -268,7 +277,7 @@ def _pick_questions(
                 session_key=session_key,
                 user_id=None,
                 company=wanted_company,
-                role=wanted_role,
+                role=None,  # No longer using role
                 question_id=qid
             ) for qid in chosen_ids
         ]
@@ -307,15 +316,23 @@ def get_optional_user(db: Session = Depends(get_db), authorization: Optional[str
 @router.get("/questions")
 def get_interview_questions(
     company: Optional[str] = Query(None),
-    role: Optional[str] = Query(None),
     experience: Optional[str] = Query(None),
     session: Optional[str] = Query(None),
     no_repeat_days: int = Query(NO_REPEAT_DAYS_DEFAULT, ge=1, le=365),
     db: Session = Depends(get_db),
 ):
+    """
+    Fetch interview questions filtered by company and experience level.
+    
+    Args:
+        company: Optional company name (e.g., "Google", "Meta", "Generic")
+        experience: Optional years of experience (e.g., "0-2", "2-4", "5-8", "8+")
+        session: Session key for avoiding repeated questions
+        no_repeat_days: Number of days to look back for previously served questions
+    """
     try:
         data = _pick_questions(
-            db, company, role, experience,
+            db, company, role=None, experience=experience,
             limit=TOTAL_QUESTIONS_TO_RETURN,
             session_key=session,
             no_repeat_days=no_repeat_days
@@ -388,6 +405,8 @@ def evaluate_answers(
     payload: schemas.EvaluateRequest,
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
+    x_session_key: Optional[str] = Header(None, alias="X-Session-Key"),
+    session_key: Optional[str] = Query(None),
 ):
     """
     Given a list of answered questions (each contains the original question object
@@ -449,11 +468,25 @@ def evaluate_answers(
 
                 # persist
                 try:
-                    ev = Evaluation(session_id=None, user_id=(current_user.id if current_user else None), overall_score=overall, details={"per_question": results})
+                    sess = x_session_key or session_key
+                    logger.info(f"(Batch) Persisting evaluation: session={sess!r} type={type(sess)} user_id={(current_user.id if current_user else None)!r} overall={overall}")
+                    
+                    ev = Evaluation(session_id=str(sess) if sess is not None else None, user_id=(current_user.id if current_user else None), overall_score=overall, details={"per_question": results})
+                    # Log what's going into the database
+                    logger.debug(f"(Batch) Evaluation object before save: {dict(inspect(ev).attrs.items())}")
+                    
                     db.add(ev)
                     db.commit()
+                    db.refresh(ev)
+                    
+                    # Log what's in the database
+                    logger.info(f"(Batch) Saved evaluation with session_id={ev.session_id!r} overall_score={ev.overall_score}")
+                    
+                    # Double check with a fresh query
+                    saved = db.query(Evaluation).filter_by(id=ev.id).first()
+                    logger.info(f"(Batch) Fresh query result: id={saved.id} session_id={saved.session_id!r} overall_score={saved.overall_score}")
                 except Exception as e:
-                    print(f"[InterviewRouter] Failed to persist evaluation: {e}")
+                    logger.error(f"(Batch) Failed to persist evaluation: {e}", exc_info=True)
 
                 resp = {"overall_score": overall, "per_question": results}
                 return jsonable_encoder(resp)
@@ -510,11 +543,25 @@ def evaluate_answers(
 
         # Persist evaluation to DB (best-effort)
         try:
-            ev = Evaluation(session_id=None, user_id=(current_user.id if current_user else None), overall_score=overall, details={"per_question": results})
+            sess = x_session_key or session_key
+            logger.info(f"Persisting evaluation: session={sess!r} type={type(sess)} user_id={(current_user.id if current_user else None)!r} overall={overall}")
+            
+            ev = Evaluation(session_id=str(sess) if sess is not None else None, user_id=(current_user.id if current_user else None), overall_score=overall, details={"per_question": results})
+            # Log what's going into the database
+            logger.debug(f"Evaluation object before save: {dict(inspect(ev).attrs.items())}")
+            
             db.add(ev)
             db.commit()
+            db.refresh(ev)
+            
+            # Log what's in the database
+            logger.info(f"Saved evaluation with session_id={ev.session_id!r} overall_score={ev.overall_score}")
+            
+            # Double check with a fresh query
+            saved = db.query(Evaluation).filter_by(id=ev.id).first()
+            logger.info(f"Fresh query result: id={saved.id} session_id={saved.session_id!r} overall_score={saved.overall_score}")
         except Exception as e:
-            print(f"[InterviewRouter] Failed to persist evaluation: {e}")
+            logger.error(f"Failed to persist evaluation: {e}", exc_info=True)
 
         resp = {"overall_score": overall, "per_question": results}
         return jsonable_encoder(resp)
@@ -522,3 +569,243 @@ def evaluate_answers(
     except Exception as exc:
         print(f"[InterviewRouter] Error in /evaluate-answers: {exc}")
         raise HTTPException(status_code=500, detail=f"Failed to evaluate answers. ({type(exc).__name__})")
+
+
+# -------------- Interview metrics and history --------------- #
+@router.get("/metrics")
+def get_interview_metrics(
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+    session_key: Optional[str] = Query(None),
+    x_session_key: Optional[str] = Header(None, alias="X-Session-Key"),
+    history_page: int = Query(1, ge=1),
+    history_page_size: int = Query(20, ge=1, le=200),
+):
+    """Get interview metrics for the current user.
+
+    Returns a consistent JSON shape with:
+    - completed: total interviews completed
+    - avgScore: average overall score
+    - improvementRate: percent improvement (recent vs older)
+    - percentileRank: percentile among users (based on avg per-user score)
+    - recentInterviews: list of interviews (most recent first) with `canRetake`
+    - achievements: list of earned badges
+    """
+    # Normalize session key: prefer explicit query param, then header
+    if not session_key and x_session_key:
+        session_key = x_session_key
+
+    # Determine whether to aggregate by authenticated user or by anonymous session_key
+    if current_user:
+        total_q = db.query(func.count(Evaluation.id)).filter(Evaluation.user_id == current_user.id)
+        completed = int(total_q.scalar() or 0)
+        eval_filter_user = lambda q: q.filter(Evaluation.user_id == current_user.id)
+    elif session_key:
+        total_q = db.query(func.count(Evaluation.id)).filter(Evaluation.session_id == session_key)
+        completed = int(total_q.scalar() or 0)
+        eval_filter_user = lambda q: q.filter(Evaluation.session_id == session_key)
+    else:
+        # No auth and no session_key — return zeros (same shape as before)
+        return {
+            "completed": 0,
+            "avgScore": 0,
+            "improvementRate": 0,
+            "percentileRank": 0,
+            "recentInterviews": [],
+            "achievements": [],
+        }
+
+    # Gather scores for improvement computation (fetch latest 10 scores only)
+    latest_scores_rows = eval_filter_user(db.query(Evaluation.overall_score)).filter(
+        Evaluation.overall_score.isnot(None)
+    ).order_by(Evaluation.created_at.desc()).limit(10).all()
+    scores = [r[0] for r in latest_scores_rows if r[0] is not None]
+    # For avgScore across all evaluations, use SQL aggregate
+    avg_row = eval_filter_user(db.query(func.avg(Evaluation.overall_score))).filter(
+        Evaluation.overall_score.isnot(None)
+    ).first()
+    avgScore = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0
+
+    # Improvement rate: compare recent 5 vs previous 5 (if available)
+    recent_scores = scores[:5]
+    older_scores = scores[5:10]
+    recent_avg = (sum(recent_scores) / len(recent_scores)) if recent_scores else 0
+    older_avg = (sum(older_scores) / len(older_scores)) if older_scores else 0
+    
+    # Calculate improvement rate
+    if older_avg > 0:
+        # Standard percentage improvement calculation
+        raw_improvement = ((recent_avg - older_avg) / older_avg) * 100
+        # Cap improvement rate to reasonable range: -100% to +100%
+        improvementRate = round(max(min(raw_improvement, 100), -100), 2)
+    elif recent_avg > 0 and older_avg == 0:
+        # Only have recent scores, not enough history for improvement calculation
+        improvementRate = 0
+    else:
+        # No scores available
+        improvementRate = 0
+
+    # Percentile rank: compute average score per user and compare (aggregate)
+    all_user_avgs = db.query(func.avg(Evaluation.overall_score).label("avg_score")).filter(
+        Evaluation.overall_score.isnot(None)
+    ).group_by(Evaluation.user_id).all()
+    all_avgs = [r[0] for r in all_user_avgs if r[0] is not None]
+    if all_avgs:
+        better_than = sum(1 for a in all_avgs if avgScore > a)
+        percentileRank = round((better_than / len(all_avgs)) * 100, 2)
+    else:
+        percentileRank = 0
+
+    # Recent interviews (paginated) with questions and retake flag
+    recent_interviews = []
+    # Compute offset/limit
+    offset = (history_page - 1) * history_page_size
+    eval_rows = (
+        eval_filter_user(db.query(Evaluation))
+        .order_by(Evaluation.created_at.desc())
+        .offset(offset)
+        .limit(history_page_size)
+        .all()
+    )
+    for ev in eval_rows:
+        company = "Practice Interview"
+        category = "General"
+        questions = []
+        if ev.details and isinstance(ev.details, dict):
+            per_q = ev.details.get("per_question") or []
+            for q in per_q:
+                if isinstance(q, dict):
+                    q_obj = q.get("question") or {}
+                    if isinstance(q_obj, dict):
+                        company = q_obj.get("company") or company
+                        category = q_obj.get("category") or category
+                    questions.append({
+                        "id": str(q_obj.get("id")) if q_obj.get("id") is not None else None,
+                        "question": q_obj.get("question") or q_obj.get("text") or "",
+                        "category": q_obj.get("category") or "General",
+                        "skills": q_obj.get("skills") or [],
+                        "model_answer": q.get("model_answer", ""),
+                        "score": q.get("score", 0),
+                        "strengths": q.get("strengths", []) if isinstance(q.get("strengths", []), list) else [],
+                        "weaknesses": q.get("weaknesses", []) if isinstance(q.get("weaknesses", []), list) else [],
+                        "feedback": q.get("feedback", ""),
+                    })
+
+        recent_interviews.append({
+            "id": ev.session_id or str(ev.id),
+            "date": ev.created_at.isoformat(),
+            "company": company,
+            "category": category,
+            "score": ev.overall_score,
+            "questions": questions,
+            "canRetake": True,
+        })
+
+    # Achievements
+    achievements = []
+    if completed >= 10:
+        achievements.append({
+            "id": "interview_master",
+            "title": "Interview Master",
+            "description": "Completed 10+ interviews",
+            "icon": "trophy",
+        })
+    if avgScore >= 85:
+        achievements.append({
+            "id": "high_performer",
+            "title": "High Performer",
+            "description": "Scored 85+ average",
+            "icon": "star",
+        })
+    # Consistency: last 3 scores >= 70
+    if len(scores) >= 3 and all(s >= 70 for s in scores[:3]):
+        achievements.append({
+            "id": "consistent",
+            "title": "Consistent Practicer",
+            "description": "Strong recent performance",
+            "icon": "check-circle",
+        })
+    if improvementRate is not None and improvementRate > 20:
+        achievements.append({
+            "id": "quick_learner",
+            "title": "Quick Learner",
+            "description": "Improved by 20%+",
+            "icon": "trending-up",
+        })
+
+    return {
+        "completed": completed,
+        "avgScore": round(avgScore, 2),
+        "improvementRate": improvementRate,
+        "percentileRank": percentileRank,
+        "recentInterviews": recent_interviews,
+        "achievements": achievements,
+        "history_page": history_page,
+        "history_page_size": history_page_size,
+        "history_total": completed,
+    }
+
+
+@router.post("/retake")
+def retake_interview(
+    payload: Dict[str, Any] = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the original questions for a past interview so the user can retake the same set.
+
+    Expects JSON { "interview_id": "<id or session_key>" } where id can be the numeric Evaluation.id
+    or the Evaluation.session_id string. Returns serialized questions in the same shape as /questions.
+    """
+    interview_id = payload.get("interview_id")
+    if not interview_id:
+        raise HTTPException(status_code=400, detail="interview_id is required")
+
+    # Try to find evaluation by numeric id or by session_id
+    evaluation = None
+    try:
+        # numeric id
+        eid = int(interview_id)
+        evaluation = db.query(Evaluation).filter(Evaluation.id == eid).first()
+    except Exception:
+        evaluation = db.query(Evaluation).filter(Evaluation.session_id == str(interview_id)).first()
+
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    if evaluation.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to retake this interview")
+
+    question_ids: List[int] = []
+    # Prefer ServedQuestion mapping when session_id exists
+    if evaluation.session_id:
+        rows = db.query(ServedQuestion).filter(ServedQuestion.session_key == evaluation.session_id).order_by(ServedQuestion.served_at.asc()).all()
+        question_ids = [r.question_id for r in rows]
+
+    # Fallback: try to extract from evaluation.details per_question
+    if not question_ids and evaluation.details and isinstance(evaluation.details, dict):
+        per_q = evaluation.details.get("per_question") or []
+        for q in per_q:
+            if isinstance(q, dict):
+                qobj = q.get("question") or {}
+                if isinstance(qobj, dict):
+                    qid = qobj.get("id")
+                    if qid:
+                        try:
+                            question_ids.append(int(qid))
+                        except Exception:
+                            pass
+
+    if not question_ids:
+        raise HTTPException(status_code=404, detail="No question ids available for this interview")
+
+    questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
+    # preserve order according to question_ids
+    id_to_q = {q.id: q for q in questions}
+    serialized = []
+    for qid in question_ids:
+        q = id_to_q.get(qid)
+        if q:
+            serialized.append(_serialize_question(q, sanitize_to=q.company))
+
+    return {"questions": serialized}

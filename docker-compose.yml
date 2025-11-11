@@ -24,23 +24,37 @@ services:
     build:
       context: ./backend
     container_name: pmbot-backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    # --- CHANGE 1: 'command' line removed ---
+    # The 'docker-entrypoint.sh' file already handles starting uvicorn.
+    # This line was bypassing the database setup in that script.
     env_file:
       - ./backend/.env
     environment:
-      PYTHONPATH: /app  
-      PM_QUESTIONS_CSV: /app/PM_Questions_8000_expanded_clean_final5.csv
+      # --- CHANGE 2: Paths updated from /app to /backend ---
+      # This matches the WORKDIR set in your backend/Dockerfile.
+      PYTHONPATH: /backend
+      PM_QUESTIONS_CSV: /backend/PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv
       CORS_ORIGINS: http://localhost:3000,http://localhost:5173
       DATABASE_URL: postgresql://user:password@db:5432/mydatabase
       # point the backend at the in-compose llm stub service so it can reach it via Docker DNS
       LLM_API_URL: http://pmbot-llm-stub:11434
+      # Preferred model to use (if available on your LLM endpoint)
+      LLM_MODEL: "qwen2:7b-instruct"
+      # Enforce using the LLM; when enabled the backend will raise errors instead of using heuristics
+      LLM_FORCE: "1"
     volumes:
-      - ./backend:/app        # <-- This brings `backend/PM_Questions_dedup.csv` into /app/
+      # --- CHANGE 3: Volume mount updated from /app to /backend ---
+      - ./backend:/backend
+    # Ensure the mounted script has Unix line endings and is executable at container start.
+    # On Windows hosts a bind mount can overwrite image permissions and leave CRLF endings.
+    entrypoint: ["sh","-c","dos2unix /backend/docker-entrypoint.sh 2>/dev/null || true; chmod +x /backend/docker-entrypoint.sh 2>/dev/null || true; /backend/docker-entrypoint.sh"]
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      pmbot-llm-stub:
+        condition: service_started
     networks:
       - pmbot-net
 
@@ -52,12 +66,10 @@ services:
       VITE_API_BASE: http://localhost:8000
       REACT_APP_API_BASE: http://localhost:8000
       NEXT_PUBLIC_API_BASE: http://localhost:8000
+    # The Frontend Dockerfile starts Vite on port 3000, so map host:container 3000:3000.
+    # If you'd rather use 5173 update the Frontend Dockerfile CMD to use --port 5173 instead.
     ports:
       - "3000:3000"
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
-    volumes:
-      - ./Frontend:/app
-      - /app/node_modules
     depends_on:
       - pmbot-backend
     networks:

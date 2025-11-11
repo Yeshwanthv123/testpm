@@ -8,8 +8,11 @@ export const useVoice = () => {
     confidence: 0
   });
   
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const recognitionRef = useRef<any>(null);
+  // Buffer refs to reduce frequent state updates from interim speech results
+  const finalTranscriptRef = useRef<string>('');
+  const pendingTranscriptRef = useRef<string>('');
+  const updateTimerRef = useRef<number | null>(null);
 
   const startRecording = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -28,7 +31,7 @@ export const useVoice = () => {
       setVoiceState(prev => ({ ...prev, isRecording: true }));
     };
 
-    recognitionRef.current.onresult = (event) => {
+  recognitionRef.current.onresult = (event: any) => {
       let finalTranscript = '';
       let interimTranscript = '';
 
@@ -41,14 +44,29 @@ export const useVoice = () => {
         }
       }
 
-      setVoiceState(prev => ({
-        ...prev,
-        transcript: prev.transcript + finalTranscript + interimTranscript,
-        confidence: event.results[event.results.length - 1][0].confidence || 0
-      }));
+      // Append final transcript to the final buffer
+      if (finalTranscript) {
+        finalTranscriptRef.current = (finalTranscriptRef.current || '') + finalTranscript;
+      }
+
+      // Build the pending full transcript (final + interim)
+      pendingTranscriptRef.current = (finalTranscriptRef.current || '') + interimTranscript;
+
+      // Debounce state updates to at most ~150ms to avoid frequent re-renders
+      if (updateTimerRef.current) {
+        window.clearTimeout(updateTimerRef.current as any);
+      }
+      updateTimerRef.current = window.setTimeout(() => {
+        setVoiceState(prev => ({
+          ...prev,
+          transcript: pendingTranscriptRef.current,
+          confidence: event.results[event.results.length - 1][0].confidence || 0
+        }));
+        updateTimerRef.current = null;
+      }, 150);
     };
 
-    recognitionRef.current.onerror = (event) => {
+  recognitionRef.current.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setVoiceState(prev => ({ ...prev, isRecording: false }));
     };
@@ -90,6 +108,12 @@ export const useVoice = () => {
   }, []);
 
   const clearTranscript = useCallback(() => {
+    finalTranscriptRef.current = '';
+    pendingTranscriptRef.current = '';
+    if (updateTimerRef.current) {
+      window.clearTimeout(updateTimerRef.current as any);
+      updateTimerRef.current = null;
+    }
     setVoiceState(prev => ({ ...prev, transcript: '' }));
   }, []);
 
@@ -106,7 +130,7 @@ export const useVoice = () => {
 // Extend Window interface for TypeScript
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
   }
 }

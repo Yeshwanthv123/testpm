@@ -5,7 +5,6 @@ export interface User {
   experience: string;
   targetCompanies: string[];
   region: string;
-  currentRole: string;
 }
 
 export interface Question {

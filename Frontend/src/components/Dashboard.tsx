@@ -12,16 +12,42 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'skills' | 'insights' | 'comparison'>('overview');
 
-  const overallScore = Math.round(result.skillScores.reduce((s, k) => s + k.score, 0) / Math.max(1, result.skillScores.length));
+  const skillScores = result.skillScores || [];
+  const overallScore = Math.round(skillScores.reduce((s, k) => s + (k.score || 0), 0) / Math.max(1, skillScores.length));
 
-  const radarData = result.skillScores.map(s => ({ skill: s.skill, score: s.score, industry: s.industryAverage || 75 }));
-  const barData = result.skillScores.map(s => ({ name: s.skill, score: s.score, industry: s.industryAverage || 75 }));
+  const radarData = skillScores.map(s => ({ skill: s.skill, score: s.score, industry: s.industryAverage || 75 }));
+  const barData = skillScores.map(s => ({ name: s.skill, score: s.score, industry: s.industryAverage || 75 }));
   const pieData = [
     { name: 'Excellent (85+)', value: result.skillScores.filter(s => s.score >= 85).length, color: '#10B981' },
     { name: 'Good (70-84)', value: result.skillScores.filter(s => s.score >= 70 && s.score < 85).length, color: '#3B82F6' },
     { name: 'Fair (60-69)', value: result.skillScores.filter(s => s.score >= 60 && s.score < 70).length, color: '#F59E0B' },
     { name: 'Needs Work (<60)', value: result.skillScores.filter(s => s.score < 60).length, color: '#EF4444' }
   ];
+
+  // If all buckets are zero (e.g. no skillScores), create a distribution based on numeric scores
+  const totalPie = pieData.reduce((s, p) => s + p.value, 0);
+  const safePieData = totalPie > 0 ? pieData : (() => {
+    const counts = { excellent:0, good:0, fair:0, needs:0 };
+    result.skillScores.forEach(s => {
+      if (s.score >= 85) counts.excellent += 1;
+      else if (s.score >= 70) counts.good += 1;
+      else if (s.score >= 60) counts.fair += 1;
+      else counts.needs += 1;
+    });
+    // fallback: if still zero (no skillScores), place everything in Needs Work so chart is visible
+    if (result.skillScores.length === 0) return [
+      { name: 'Excellent (85+)', value: 0, color: '#10B981' },
+      { name: 'Good (70-84)', value: 0, color: '#3B82F6' },
+      { name: 'Fair (60-69)', value: 0, color: '#F59E0B' },
+      { name: 'Needs Work (<60)', value: 1, color: '#EF4444' }
+    ];
+    return [
+      { name: 'Excellent (85+)', value: counts.excellent, color: '#10B981' },
+      { name: 'Good (70-84)', value: counts.good, color: '#3B82F6' },
+      { name: 'Fair (60-69)', value: counts.fair, color: '#F59E0B' },
+      { name: 'Needs Work (<60)', value: counts.needs, color: '#EF4444' }
+    ];
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
@@ -90,7 +116,12 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
               <h3 className="text-xl font-bold mb-4">Performance Distribution</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart><Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={80}>{pieData.map((p,i)=>(<Cell key={i} fill={p.color}/>))}</Pie><Tooltip/></PieChart>
+                  <PieChart>
+                      <Pie data={safePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false}>
+                        {safePieData.map((p,i)=>(<Cell key={i} fill={p.color || '#ccc'}/>))}
+                      </Pie>
+                    <Tooltip/>
+                  </PieChart>
                 </ResponsiveContainer>
               </div>
             </div>

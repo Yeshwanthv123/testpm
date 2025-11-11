@@ -10,7 +10,6 @@ interface OnboardingProps {
 const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
   const [formData, setFormData] = useState({
     experience: user.experience || '',
-    currentRole: user.currentRole || '',
     region: user.region || ''
   });
 
@@ -55,7 +54,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
   ];
 
   const handleSubmit = () => {
-    if (!formData.experience || !formData.currentRole || !formData.region) {
+    if (!formData.experience || !formData.region) {
       alert('Please fill in all fields');
       return;
     }
@@ -63,14 +62,13 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
     const updatedUser: UserType = {
       ...user,
       experience: formData.experience,
-      currentRole: formData.currentRole,
       region: formData.region
     };
 
     onComplete(updatedUser);
   };
 
-  const canProceed = formData.experience && formData.currentRole && formData.region;
+  const canProceed = formData.experience && formData.region;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
@@ -153,13 +151,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
             
             <div className="mt-4 p-3 md:p-4 bg-blue-50 rounded-xl border border-blue-200">
               <h4 className="font-medium text-blue-900 mb-2 text-sm md:text-base">💡 Examples of roles:</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs md:text-sm text-blue-800">
-                <span>• Product Manager</span>
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-2 text-xs md:text-sm text-blue-800">
+                <span>• APM (Associate PM)</span>
+                <span>• PM (Product Manager)</span>
                 <span>• Senior PM</span>
-                <span>• Associate PM</span>
-                <span>• Principal PM</span>
-                <span>• Director of Product</span>
-                <span>• VP of Product</span>
+                <span>• Principle/Director PM</span>
               </div>
             </div>
           </div>

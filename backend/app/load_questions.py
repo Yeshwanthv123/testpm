@@ -16,10 +16,9 @@ def _infer_csv_path() -> Optional[str]:
     env_path = os.getenv("PM_QUESTIONS_CSV")
     candidates = [
         env_path,
-        os.path.join(os.getcwd(), "PM_Questions_8000_expanded_clean_final5.csv"),
-        os.path.join(os.getcwd(), "PM_Questions_dedup.csv"),
-        os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_8000_expanded_clean_final5.csv"),
-        "/app/PM_Questions_8000_expanded_clean_final5.csv",
+        os.path.join(os.getcwd(), "PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv"),
+        os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv"),
+        "/app/PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv",
     ]
     for p in candidates:
         if p and os.path.isfile(p):
@@ -39,7 +38,7 @@ def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict
     if not path or not os.path.isfile(path):
         raise FileNotFoundError(f"Questions CSV not found (looked for {path})")
 
-    # Simplified loader: read Question column and insert basic rows if model allows
+    # Load from new CSV with experience_level and years_of_experience columns
     model_cols = {c.name for c in Question.__table__.columns}
     to_insert: List[Question] = []
     read_count = 0
@@ -53,11 +52,20 @@ def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict
             if not question_text:
                 skip_count += 1
                 continue
-            data = {"company": _clean_str(row.get("Company")) or "Generic", "category": _clean_str(row.get("Category"))}
+            
+            data = {
+                "company": _clean_str(row.get("Company")) or "Generic",
+                "category": _clean_str(row.get("Category")),
+                "complexity": _clean_str(row.get("Complexity")),
+                "experience_level": _clean_str(row.get("Experience Level")),
+                "years_of_experience": _clean_str(row.get("Years of Experience")),
+            }
+            
             if "text" in model_cols:
                 data["text"] = question_text
             elif "question" in model_cols:
                 data["question"] = question_text
+            
             to_insert.append(Question(**{k: v for k, v in data.items() if k in model_cols}))
 
     db.query(Question).delete()

@@ -85,7 +85,6 @@ class SignUpIn(BaseModel):
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     experience: Optional[str] = None
-    currentRole: Optional[str] = None
     region: Optional[str] = None
     targetCompanies: Optional[list[str]] = None
 
@@ -141,7 +140,6 @@ def me(current: User = Depends(get_current_user)):
         "created_at": current.created_at,
         **({ "full_name": getattr(current, "full_name") } if hasattr(current, "full_name") else {}),
         **({ "experience": getattr(current, "experience") } if hasattr(current, "experience") else {}),
-        **({ "currentRole": getattr(current, "currentRole") } if hasattr(current, "currentRole") else {}),
         **({ "region": getattr(current, "region") } if hasattr(current, "region") else {}),
         **({ "targetCompanies": getattr(current, "targetCompanies") } if hasattr(current, "targetCompanies") else {}),
     }
@@ -161,10 +159,36 @@ def update_me(update: UserUpdate, db: Session = Depends(get_db), current: User =
         "created_at": current.created_at,
         **({ "full_name": getattr(current, "full_name") } if hasattr(current, "full_name") else {}),
         **({ "experience": getattr(current, "experience") } if hasattr(current, "experience") else {}),
-        **({ "currentRole": getattr(current, "currentRole") } if hasattr(current, "currentRole") else {}),
         **({ "region": getattr(current, "region") } if hasattr(current, "region") else {}),
         **({ "targetCompanies": getattr(current, "targetCompanies") } if hasattr(current, "targetCompanies") else {}),
     }
+
+# -------------------- Password Management -------------------- #
+class ChangePasswordPayload(BaseModel):
+    currentPassword: str
+    newPassword: str
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordPayload,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user)
+):
+    """Change the authenticated user's password.
+    
+    Expects: { "currentPassword": "...", "newPassword": "..." }
+    Returns: { "message": "Password updated successfully" }
+    """
+    # Verify current password
+    if not current.hashed_password or current.hashed_password != _sha256(payload.currentPassword):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    
+    # Update password
+    current.hashed_password = _sha256(payload.newPassword)
+    db.add(current)
+    db.commit()
+    
+    return {"message": "Password updated successfully"}
 
 # -------------------- Token Refresh -------------------- #
 @router.post("/refresh")

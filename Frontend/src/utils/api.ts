@@ -14,7 +14,6 @@ export type QuestionDTO = {
 
 export type FetchQuestionsParams = {
   company?: string | null;
-  role?: string | null; // APM | PM | Senior PM | Group PM | Principal PM | Director
   experience?: string | null; // "0-2" | "2-4" | "5-8" | "8+"
   signal?: AbortSignal;
 };
@@ -75,9 +74,9 @@ function getSessionKey(): string {
         return v.toString(16);
       });
     }
-    localStorage.setItem(KEY, id);
+    localStorage.setItem(KEY, id as string);
   }
-  return id;
+  return id as string;
 }
 
 // ---- Public API ----------------------------------------------------------
@@ -88,10 +87,9 @@ function getSessionKey(): string {
  */
 export async function fetchInterviewQuestions(params: FetchQuestionsParams): Promise<QuestionDTO[]> {
   const company = normalizeStr(params.company);
-  const role = normalizeStr(params.role);
   const experience = normalizeStr(params.experience);
 
-  // NEW: include session so server can avoid repeating questions across runs
+  // Include session so server can avoid repeating questions across runs
   const session = getSessionKey();
 
   const url =
@@ -99,9 +97,8 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
     INTERVIEW_PATH +
     qs({
       company,
-      role,
       experience,
-      session, // <— NEW
+      session,
     });
 
   let res: Response;
@@ -118,11 +115,11 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
       {
         id: null,
         question:
-          "We couldn’t reach the interview service. Please ensure the backend is running and CORS allows this origin.",
+          "We couldn't reach the interview service. Please ensure the backend is running and CORS allows this origin.",
         company: company ?? null,
         category: null,
         complexity: null,
-        experience_level: role ?? null,
+        experience_level: null,
         years_of_experience: experience ?? null,
       },
     ];
@@ -148,7 +145,7 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
         company: company ?? null,
         category: null,
         complexity: null,
-        experience_level: role ?? null,
+        experience_level: null,
         years_of_experience: experience ?? null,
       },
     ];
@@ -184,7 +181,7 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
           company: company ?? null,
           category: null,
           complexity: null,
-          experience_level: role ?? null,
+          experience_level: null,
           years_of_experience: experience ?? null,
         },
       ];
@@ -200,7 +197,7 @@ export async function fetchInterviewQuestions(params: FetchQuestionsParams): Pro
         company: company ?? null,
         category: null,
         complexity: null,
-        experience_level: role ?? null,
+        experience_level: null,
         years_of_experience: experience ?? null,
       },
     ];
@@ -328,7 +325,63 @@ export async function startInterviewWithJD(
   }
 }
 
-// --- END OF NEW FUNCTION ---
+// --- Interview Metrics ------------------------------------------------------
+
+export type InterviewMetrics = {
+  completed: number;
+  avgScore: number;
+  improvementRate: number;
+  percentileRank: number;
+  recentInterviews: Array<{
+    id: string;
+    company: string;
+    category: string;
+    date: string;
+    score: number;
+    duration: number;
+    questions: Array<{
+      id: string;
+      question: string;
+      score: number;
+      feedback?: string;
+    }>;
+  }>;
+  achievements?: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    icon?: string;
+  }>;
+}
+
+export async function fetchInterviewMetrics(opts?: { page?: number; pageSize?: number }): Promise<any> {
+  const token = localStorage.getItem("access_token");
+  if (!token) {
+    throw new Error("No token found");
+  }
+
+  const params: Record<string, string> = {};
+  if (opts?.page) params.history_page = String(opts.page);
+  if (opts?.pageSize) params.history_page_size = String(opts.pageSize);
+
+  const qsParams = qs(params);
+
+  const response = await fetch(`${API_BASE}/api/interview/metrics${qsParams}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch interview metrics");
+  }
+
+  return await response.json();
+}
+
+// --- Health Check ----------------------------------------------------------
 
 /**
  * Optional: small health check you can call from your app if needed.

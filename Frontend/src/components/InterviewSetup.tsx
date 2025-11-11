@@ -34,28 +34,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
   };
 
   // --- helpers: keep logic stable with backend expectations ---
-  function normalizeRole(role?: string | null): string | undefined {
-    if (!role) return undefined;
-    const r = role.trim().toLowerCase();
-    const map: Record<string, string> = {
-      'apm': 'APM',
-      'associate pm': 'APM',
-      'product manager': 'PM',
-      'pm': 'PM',
-      'senior pm': 'Senior PM',
-      'sr pm': 'Senior PM',
-      'sr. pm': 'Senior PM',
-      'group pm': 'Group PM',
-      'gpm': 'Group PM',
-      'principal pm': 'Principal PM',
-      'pr. pm': 'Principal PM',
-      'director': 'Director',
-      'product director': 'Director',
-    };
-    return map[r] ?? role.trim();
-  }
-
-
+  
   // Extended company list with search functionality
   const allCompanies = [
     { 
@@ -319,14 +298,13 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
     setUseJobDescription(true);
 
     try {
-      // Extract company and role locally from the pasted JD
-      const { company: extractedCompany, role: extractedRole } = extractCompanyAndRole(jobDescription);
+      // Extract company from the pasted JD
+      const { company: extractedCompany } = extractCompanyAndRole(jobDescription);
       const derivedCompany = extractedCompany || selectedCompany || 'Generic';
-      const derivedRole = extractedRole || normalizeRole(user.currentRole) || undefined;
 
       const apiResult = await fetchInterviewQuestions({
         company: derivedCompany,
-        role: derivedRole,
+        experience: user.experience,
       });
 
   let questions = (apiResult as unknown) as Question[];
@@ -376,8 +354,10 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
         if (ext === 'pdf') {
           // PDF parsing using pdfjs-dist
           // dynamic import so devs without dependency won't break until feature used
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const pdfjs = await import('pdfjs-dist/legacy/build/pdf');
+          // Use @vite-ignore to avoid static resolution when the package is not installed
+          const pkgName = 'pdfjs-dist/legacy/build/pdf';
+          // @ts-ignore
+          const pdfjs = await import(/* @vite-ignore */ pkgName);
           // try to set workerSrc to CDN; if blocked it's still OK
           try {
             // @ts-ignore
@@ -401,7 +381,9 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
 
         if (ext === 'docx') {
           // DOCX parsing using mammoth
-          const mammoth = await import('mammoth');
+          const mammothPkg = 'mammoth';
+          // @ts-ignore
+          const mammoth = await import(/* @vite-ignore */ mammothPkg);
           const arrayBuffer = await file.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer });
           const text = result.value || '';
@@ -428,8 +410,8 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
   };
 
   const handleStartInterview = async () => {
-    if (!selectedType || !user.currentRole || !user.experience) {
-      alert("Please select an interview type and ensure your profile is complete.");
+    if (!selectedType || !user.experience) {
+      alert("Please select an interview type and ensure your profile is complete (experience level required).");
       return;
     }
 
@@ -438,22 +420,21 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
       let questions: Question[] = [];
 
       if (useJobDescription && jobDescription.trim()) {
-        // ✅ New JD-aware logic
-    const { company: extractedCompany, role: extractedRole } = extractCompanyAndRole(jobDescription);
-  const derivedCompany = extractedCompany || selectedCompany || "Generic";
-    const derivedRole = extractedRole || normalizeRole(user.currentRole) || undefined;
+        // JD-aware logic: extract company but use user's experience level for filtering
+        const { company: extractedCompany } = extractCompanyAndRole(jobDescription);
+        const derivedCompany = extractedCompany || selectedCompany || "Generic";
 
         const apiResult = await fetchInterviewQuestions({
           company: derivedCompany,
-          role: derivedRole,
+          experience: user.experience,
         });
 
-  questions = (apiResult as unknown) as Question[];
+        questions = (apiResult as unknown) as Question[];
       } else {
-        // 🔹 Original fallback path untouched
+        // Original fallback path: use selected company and user's experience level
         const apiResult = await fetchInterviewQuestions({
           company: (selectedCompany || 'Generic'),
-          role: normalizeRole(user.currentRole),
+          experience: user.experience,
         });
         questions = (apiResult as unknown) as Question[];
       }

@@ -114,14 +114,10 @@ class AIService:
         return "llama3"
 
     def _query_ollama(self, prompt: str) -> str:
-        """
-        Send prompt to the configured LLM endpoint and return the model's text output.
-        Adds flexible parsing for different JSON response formats and detailed error logs.
-        """
+        # Robust request with a few retries before giving up
         tries = 3
         delay = 1
         last_exc = None
-
         for attempt in range(tries):
             try:
                 response = requests.post(
@@ -129,35 +125,15 @@ class AIService:
                     json={"model": self.model, "prompt": prompt, "stream": False},
                     timeout=120,
                 )
-
-                # Try multiple possible response structures
-                resp_json = response.json()
-                raw_text = (
-                    resp_json.get("response")
-                    or resp_json.get("data", {}).get("output_text")
-                    or resp_json.get("message")
-                    or resp_json.get("text")
-                    or ""
-                )
-
-                raw_text = (raw_text or "").strip()
-
-                # Optional: small debug log for troubleshooting
-                if not raw_text:
-                    print(f"[AIService] Empty response on attempt {attempt+1} from {self.llm_api_url}, model={self.model}")
-                else:
-                    return raw_text
-
+                return response.json().get("response", "").strip()
             except Exception as e:
                 last_exc = e
-                print(f"[AIService] LLM query error on attempt {attempt+1}: {e}")
                 try:
                     import time
                     time.sleep(delay)
                     delay *= 2
                 except Exception:
                     pass
-
         print(f"[Ollama error] Failed after {tries} attempts: {last_exc}")
         return ""
 
@@ -579,107 +555,103 @@ class AIService:
 
         return skill_breakdown
 
-    def generate_answers_batch(self, questions: list[dict]) -> list:
-        """
-        Generate model answers for a batch of question dicts. Each question dict should
-        include at least the 'question' key and optionally 'skills'. Returns a list of
-        model answer strings matching the input order. Falls back to per-question
-        generation when the LLM endpoint cannot provide a structured array.
-        """
-        try:
-            parts = []
-            for i, q in enumerate(questions):
-                qq = q.get('question') or q.get('text') or ''
-                sks = q.get('skills') or []
-                sk = f"\nSkills: {', '.join(sks)}" if sks else ''
-                parts.append(f"Q{i+1}: {qq}{sk}")
-
-            prompt = (
-                "You are an expert interview coach. For each numbered question below, produce a high-quality model answer.\n"
-                "Output must be a single valid JSON array where each element is the model answer string for the corresponding question.\n\n"
-                "Questions:\n" + "\n".join(parts) + "\n\nJSON:\n"
-            )
-            raw = self._query_ollama(prompt)
-            if raw and raw.strip():
-                try:
-                    data = json.loads(raw)
-                    if isinstance(data, list) and len(data) == len(questions):
-                        return [str(x) for x in data]
-                except Exception:
-                    # try to extract JSON array substring
-                    start = raw.find('[')
-                    end = raw.rfind(']')
-                    if start != -1 and end != -1 and end > start:
-                        try:
-                            data = json.loads(raw[start:end+1])
-                            if isinstance(data, list) and len(data) == len(questions):
-                                return [str(x) for x in data]
-                        except Exception:
-                            pass
-
-            # If LLM didn't return structured output, respect force_llm
-            if getattr(self, 'force_llm', False):
-                raise Exception('LLM did not return structured batch answers and LLM_FORCE is enabled')
-
-        except Exception as e:
-            print(f"[AIService generate_answers_batch error] {e}")
-
-        # Fallback: call generate_answer per question
-        out = []
-        for q in questions:
-            qa = q.get('question') or q.get('text') or ''
-            sk = q.get('skills') or []
-            try:
-                a = self.generate_answer(qa, sk)
-            except Exception:
-                a = self._fallback_model_answer(qa, sk)
-            out.append(a)
-        return out
-
     def generate_answer(self, question_text: str, skills: list | None = None) -> str:
         """
-        Generate a model answer for a given interview question. Prefer concise, structured
-        high-quality answers. This tries the LLM and falls back to a deterministic template
-        when the LLM is unavailable (unless force_llm is enabled, in which case an
-        exception is raised).
+        Generate a model answer for a given interview question. Prefer concise, modern
+        high-quality interview answers that demonstrate frameworks, structure, and examples.
         """
-        key = (question_text or "").strip()
         try:
+            skills_text = "\nSkills to emphasize: " + ", ".join(skills) if skills else ""
+            key = (question_text or "").strip()
             if key in self._answer_cache:
                 return self._answer_cache[key]
-
-            skills_text = "\nSkills to emphasize: " + ", ".join(skills) if skills else ""
             prompt = (
                 "You are an expert interview coach and candidate.\n"
-                "Given the question below, produce a high-quality sample answer suitable for a mid-to-senior product manager. Use a clear structure (summary, approach, example, metrics).\n\n"
+                "Given the question below, produce a high-quality sample answer suitable for a mid-to-senior product manager. Use a clear structure (summary, approach, examples, metrics).\n\n"
                 "Question:\n" + question_text + "\n\n" + skills_text + "\n\nAnswer:\n"
             )
-
             ans = self._query_ollama(prompt)
-            if not ans or not ans.strip():
+            # If LLM is unavailable or returned an empty response, provide a simple
+            # If LLM is unavailable or returned an empty response, handle according
+            # to force_llm: if forced, raise error so callers know the LLM failed.
+            # Otherwise, provide a deterministic fallback answer so the system can still operate offline.
+            if not ans or len(ans.strip()) == 0:
                 if getattr(self, 'force_llm', False):
                     raise Exception("LLM returned empty response and LLM_FORCE is enabled")
                 skills_text = ", ".join(skills) if skills else ""
                 ans = (
-                    f"Summary:\nProvide a concise recommendation and primary outcome.\n\n"
-                    f"Approach:\n1) Clarify goals and target users. 2) Break problem into key pillars (user research, MVP, metrics).\n"
-                    f"Example:\nDescribe a specific project example: timeline, decisions made, trade-offs, stakeholders involved, and measurable outcomes.\n\n"
-                    f"Metrics & Impact:\nList the metrics you would track (e.g., activation, retention, NPS) and target improvements.\n\n"
-                    f"Skills emphasized: {skills_text}."
+                    f"Structured answer: Summary -> Approach -> Example -> Metrics.\n"
+                    f"Question: {question_text}\n"
+                    f"Skills to emphasize: {skills_text}\n\n"
+                    "Example: I would start by clarifying goals, define metrics, run a small-scale experiment, "
+                    "iterate based on results, and measure impact using retention and NPS."
                 )
-
-            # Cache non-trivial answers
             try:
-                if ans and len(ans) > 20:
+                # cache short non-empty answers
+                if ans and len(ans) > 10:
                     self._answer_cache[key] = ans
             except Exception:
                 pass
+            try:
+                data = json.loads(raw)
+                if isinstance(data, list):
+                    return [str(x) for x in data]
+            except Exception:
+                pass
 
-            return ans
+            # If the batch call failed to produce structured output and force_llm is enabled,
+            # raise so the caller can handle the failure instead of silently falling back.
+            if getattr(self, 'force_llm', False):
+                raise Exception("LLM batch generation failed and LLM_FORCE is enabled")
+
+            # fallback: generate individually (ensure non-empty answers)
+            answers = []
+            for q in questions:
+                qa = q.get("question") or q.get("text") or ""
+                sk = q.get("skills") or []
+                ans = self.generate_answer(qa, sk)
+                if not ans or not ans.strip():
+                    # deterministic fallback if model unavailable
+                    skills_text = ", ".join(sk) if sk else ""
+                    ans = (
+                        f"Structured answer: Summary -> Approach -> Example -> Metrics.\n"
+                        f"Question: {qa}\n"
+                        f"Skills to emphasize: {skills_text}\n\n"
+                        "Example: I would start by clarifying goals, define metrics, run a small-scale experiment, "
+                        "iterate based on results, and measure impact using retention and NPS."
+                    )
+                answers.append(ans)
+            return answers
+
+            raw = self._query_ollama(prompt)
+            try:
+                data = json.loads(raw)
+                if isinstance(data, list):
+                    return [str(x) for x in data]
+            except Exception:
+                pass
+
+            # fallback: generate individually (ensure non-empty answers)
+            answers = []
+            for q in questions:
+                qa = q.get("question") or q.get("text") or ""
+                sk = q.get("skills") or []
+                ans = self.generate_answer(qa, sk)
+                if not ans or not ans.strip():
+                    # deterministic fallback if model unavailable
+                    skills_text = ", ".join(sk) if sk else ""
+                    ans = (
+                        f"Structured answer: Summary -> Approach -> Example -> Metrics.\n"
+                        f"Question: {qa}\n"
+                        f"Skills to emphasize: {skills_text}\n\n"
+                        "Example: I would start by clarifying goals, define metrics, run a small experiment, iterate based on results, and measure impact using retention and NPS."
+                    )
+                answers.append(ans)
+            return answers
         except Exception as e:
-            print(f"[AIService generate_answer error] {e}")
-            # final fallback deterministic answer
-            return self._fallback_model_answer(question_text, skills)
+            print(f"[AIService generate_answers_batch error] {e}")
+            # fallback individually
+            return [self.generate_answer(q.get("question") or q.get("text") or "", q.get("skills")) for q in questions]
 
     def evaluate_answer(self, question_text: str, user_answer: str, model_answer: str) -> dict:
         """
@@ -807,11 +779,8 @@ class AIService:
             )
 
             raw = self._query_ollama(prompt)
-            print(f"[AIService evaluate_answers_batch] Raw response (first 200 chars): {raw[:200] if raw else 'EMPTY'}")
-            print(f"[AIService evaluate_answers_batch] Items count: {len(items)}")
             try:
                 data = json.loads(raw) if raw and raw.strip() else None
-                print(f"[AIService evaluate_answers_batch] Parsed data type: {type(data)}, length: {len(data) if isinstance(data, list) else 'N/A'}")
                 if isinstance(data, list) and len(data) == len(items):
                     out = []
                     for obj in data:
