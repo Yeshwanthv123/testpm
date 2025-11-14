@@ -39,6 +39,41 @@ const INTERVIEW_PATH = "/api/interview/questions";
 // --- ADDED THIS LINE ---
 const INTERVIEW_JD_PATH = "/api/interview/start-with-jd";
 
+// ---- Generic API helper -------------------------------------------------
+/**
+ * Generic API helper used across the frontend (auth, data fetching, etc.)
+ * Signature: api<T>(path, method = 'GET', body?, token?)
+ */
+export async function api<T = any>(path: string, method = "GET", body?: any, token?: string): Promise<T> {
+  const url = API_BASE.replace(/\/$/, "") + (path.startsWith("/") ? path : `/${path}`);
+
+  const headers: Record<string, string> = {};
+  if (body && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    body: body && !(body instanceof FormData) ? JSON.stringify(body) : body,
+  });
+
+  if (!res.ok) {
+    // Try to parse JSON error detail
+    try {
+      const j = await res.json();
+      const detail = j?.detail ?? j?.message ?? JSON.stringify(j);
+      throw new Error(detail || `Request failed with status ${res.status}`);
+    } catch (err) {
+      throw new Error(`Request failed with status ${res.status}`);
+    }
+  }
+
+  // If no content
+  if (res.status === 204) return {} as T;
+
+  return (await res.json()) as T;
+}
+
 // ---- Helpers -------------------------------------------------------------
 
 function qs(obj: Record<string, string | undefined>): string {

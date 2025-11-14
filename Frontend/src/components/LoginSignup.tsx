@@ -36,7 +36,8 @@ const LoginSignup: React.FC<LoginSignupProps> = ({ onComplete }) => {
   });
 
   const handleSocialLogin = (provider: "google" | "linkedin") => {
-    window.location.href = `${API_BASE}/auth/oauth/${provider}/start`;
+    // Redirect to backend OAuth flow
+    window.location.href = `${API_BASE}/oauth/${provider}/start`;
   };
 
   async function fetchMe(accessToken: string) {

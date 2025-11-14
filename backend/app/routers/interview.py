@@ -28,39 +28,52 @@ NO_REPEAT_DAYS_DEFAULT = 90
 
 
 # -------------- Experience Level normalization (no longer using role) -------- #
-def normalize_experience(experience: Optional[str]) -> Optional[str]:
+def normalize_experience(experience: Optional[str]) -> Optional[Tuple[str, Optional[str]]]:
     """
-    Normalize experience level string (e.g., '0-2', '2-4', '5-8', '8+')
-    to match the Years of Experience column in the CSV.
+    Normalize experience level string (e.g., '6-10 years', '10+ years')
+    Returns (years_bucket, expected_role_level).
+    
+    Maps:
+    - '0-2 years' -> ('0-2', 'APM')
+    - '3-5 years' -> ('3-5', 'PM')
+    - '6-10 years' -> ('6-10', 'Senior PM')
+    - '10+ years' -> ('10+', None) filters to Principal/Director only
     """
     if not experience:
         return None
     exp = experience.strip().lower()
-    # Map input to canonical buckets used in CSV: 0-2, 3-5, 6-10, 10+
     m = exp.replace("years", "").replace("year", "").replace("yrs", "").replace(" ", "")
-    # direct matches
+    
+    # Map to (years_bucket, expected_role_level)
     if m in ("0-2", "0-1", "1-2"):
-        return "0-2"
+        return ("0-2", "APM")
     if m in ("3-5", "2-3", "2-4", "2-5", "3-4"):
-        return "3-5"
+        return ("3-5", "PM")
     if m in ("5-8", "6-10", "5-10", "6-8", "8-10"):
-        return "6-10"
+        return ("6-10", "Senior PM")
     if m.endswith("+"):
         try:
             val = int(m[:-1])
-            return "10+" if val >= 10 else ("6-10" if val >= 6 else ("3-5" if val >= 3 else "0-2"))
+            if val >= 10:
+                return ("10+", None)  # None means Principal/Director level
+            elif val >= 6:
+                return ("6-10", "Senior PM")
+            elif val >= 3:
+                return ("3-5", "PM")
+            else:
+                return ("0-2", "APM")
         except Exception:
-            return "10+"
+            return ("10+", None)
     # try numeric single value
     try:
         v = int(re.search(r"(\d+)", m).group(1))
         if v <= 2:
-            return "0-2"
+            return ("0-2", "APM")
         if 3 <= v <= 5:
-            return "3-5"
+            return ("3-5", "PM")
         if 6 <= v <= 10:
-            return "6-10"
-        return "10+"
+            return ("6-10", "Senior PM")
+        return ("10+", None)
     except Exception:
         return None
 
@@ -223,7 +236,10 @@ def _pick_questions(
 ) -> List[Dict[str, Any]]:
 
     wanted_company = normalize_company(company)
-    wanted_experience = normalize_experience(experience)
+    exp_result = normalize_experience(experience)
+    wanted_experience = exp_result[0] if exp_result else None
+    expected_role = exp_result[1] if exp_result else None
+    
     horizon = datetime.utcnow() - timedelta(days=no_repeat_days)
 
     exclude_ids: List[int] = []
@@ -258,24 +274,39 @@ def _pick_questions(
 
     remaining = limit
 
+    # Build a helper to add role filtering to any base query
+    def add_role_filter(query):
+        """Add experience_level filtering based on expected_role"""
+        if expected_role == "Senior PM":
+            # 6-10 years: exclude Principal/Director roles
+            return query.filter(not_(Question.experience_level.in_(["Principal PM", "Director", "Principal Product Manager"])))
+        elif expected_role is None:
+            # 10+ years: ONLY Principal/Director, exclude APM/PM/Senior PM
+            return query.filter(~Question.experience_level.in_(["APM", "PM", "Senior PM"]))
+        else:
+            # Other roles (APM, PM): no additional filtering needed for fallback
+            return query
+
     # 1. Try to match both company and experience level (most specific)
     if wanted_company and wanted_experience:
-        remaining = add_from_query(
-            db.query(Question).filter(and_(Question.company == wanted_company,
-                                          Question.years_of_experience == wanted_experience)),
-            sanitize_to=wanted_company, remaining=remaining)
+        base_filter = and_(Question.company == wanted_company, Question.years_of_experience == wanted_experience)
+        query = db.query(Question).filter(base_filter)
+        query = add_role_filter(query)
+        
+        remaining = add_from_query(query, sanitize_to=wanted_company, remaining=remaining)
 
-    # 2. Try company + any experience (company is important)
+    # 2. Try company + any experience (company is important) - APPLY ROLE FILTER
     if remaining > 0 and wanted_company:
-        remaining = add_from_query(
-            db.query(Question).filter(Question.company == wanted_company),
-            sanitize_to=wanted_company, remaining=remaining)
+        query = db.query(Question).filter(Question.company == wanted_company)
+        query = add_role_filter(query)
+        remaining = add_from_query(query, sanitize_to=wanted_company, remaining=remaining)
 
-    # 3. Try desired experience + generic/any company (experience is important)
+    # 3. Try desired experience + generic/any company (experience is important) - APPLY ROLE FILTER
     if remaining > 0 and wanted_experience:
-        remaining = add_from_query(
-            db.query(Question).filter(Question.years_of_experience == wanted_experience),
-            sanitize_to=wanted_company or "Generic", remaining=remaining)
+        base_filter = Question.years_of_experience == wanted_experience
+        query = db.query(Question).filter(base_filter)
+        query = add_role_filter(query)
+        remaining = add_from_query(query, sanitize_to=wanted_company or "Generic", remaining=remaining)
 
     # 4. If still not enough, get any questions
     if remaining > 0:
@@ -788,13 +819,49 @@ def retake_interview(
     if evaluation.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to retake this interview")
 
+    # If the evaluation stored a per-question snapshot, prefer returning that exact snapshot
+    # This preserves question text, company, skills, model_answer, score, strengths, weaknesses, feedback
+    if evaluation.details and isinstance(evaluation.details, dict):
+        per_q = evaluation.details.get("per_question") or []
+        if isinstance(per_q, list) and len(per_q) > 0:
+            serialized = []
+            for idx, q in enumerate(per_q):
+                if not isinstance(q, dict):
+                    continue
+                q_obj = q.get("question") or {}
+                qid = None
+                if isinstance(q_obj, dict):
+                    qid = q_obj.get("id")
+                qtext = None
+                if isinstance(q_obj, dict):
+                    qtext = q_obj.get("question") or q_obj.get("text")
+                if not qtext:
+                    qtext = q.get("question") or q.get("text") or ""
+
+                serialized.append({
+                    "id": str(qid) if qid is not None else f"retaken_{idx}",
+                    "question": qtext or "",
+                    "company": (q_obj.get("company") if isinstance(q_obj, dict) else None) or q.get("company"),
+                    "category": (q_obj.get("category") if isinstance(q_obj, dict) else None) or q.get("category") or "General",
+                    "complexity": (q_obj.get("complexity") if isinstance(q_obj, dict) else None) or q.get("complexity") or q.get("difficulty"),
+                    "experience_level": (q_obj.get("experience_level") if isinstance(q_obj, dict) else None) or q.get("experience_level"),
+                    "years_of_experience": (q_obj.get("years_of_experience") if isinstance(q_obj, dict) else None) or q.get("years_of_experience"),
+                    "skills": (q_obj.get("skills") if isinstance(q_obj, dict) else None) or q.get("skills") or [],
+                    "model_answer": q.get("model_answer") or "",
+                    "score": q.get("score") or 0,
+                    "strengths": q.get("strengths") or [],
+                    "weaknesses": q.get("weaknesses") or [],
+                    "feedback": q.get("feedback") or "",
+                })
+            return {"questions": serialized}
+
+    # Fallback: return questions by id from ServedQuestion mapping or evaluation snapshot ids
     question_ids: List[int] = []
     # Prefer ServedQuestion mapping when session_id exists
     if evaluation.session_id:
         rows = db.query(ServedQuestion).filter(ServedQuestion.session_key == evaluation.session_id).order_by(ServedQuestion.served_at.asc()).all()
         question_ids = [r.question_id for r in rows]
 
-    # Fallback: try to extract from evaluation.details per_question
     if not question_ids and evaluation.details and isinstance(evaluation.details, dict):
         per_q = evaluation.details.get("per_question") or []
         for q in per_q:

@@ -439,7 +439,14 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
         questions = (apiResult as unknown) as Question[];
       }
 
-      onStartInterview(selectedType, questions, useJobDescription ? jobDescription : undefined);
+      // Extract company name from first question and update interview type name
+      const companyFromQuestions = questions?.[0]?.company || selectedCompany || 'General Product Management';
+      const updatedInterviewType = {
+        ...selectedType,
+        name: companyFromQuestions,
+      };
+
+      onStartInterview(updatedInterviewType, questions, useJobDescription ? jobDescription : undefined);
     } catch (error) {
       console.error('Failed to start interview:', error);
       alert('Failed to fetch questions. Please try again.');

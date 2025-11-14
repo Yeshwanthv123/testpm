@@ -26,6 +26,23 @@ function App() {
 
   useEffect(() => {
     const checkAuthStatus = async () => {
+      // First, check if we're coming back from OAuth callback
+      const hash = window.location.hash;
+      if (hash.startsWith('#auth=')) {
+        try {
+          const encodedAuth = hash.substring(6); // Remove '#auth='
+          const authData = JSON.parse(decodeURIComponent(encodedAuth));
+          if (authData.access_token && authData.refresh_token) {
+            localStorage.setItem('access_token', authData.access_token);
+            localStorage.setItem('refresh_token', authData.refresh_token);
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (e) {
+          console.error('Failed to parse OAuth callback', e);
+        }
+      }
+
       const token = localStorage.getItem('access_token');
       if (token) {
         try {
@@ -256,23 +273,85 @@ function App() {
   };
 
   const handleRetakeInterview = () => {
-    // Restore the last used questions and interview type (if available) so the user
-    // retakes the exact same interview they just completed.
-    try {
-      const raw = sessionStorage.getItem('pmbot_questions');
-      const rawType = sessionStorage.getItem('pmbot_selected_type');
-      if (raw) {
-        const qs = JSON.parse(raw) as Question[];
-        setInterviewQuestions(qs);
+    // If we have a past interview result (from Profile -> View Result), try to
+    // request the original questions from the backend so the user retakes the
+    // exact same interview. Fall back to sessionStorage behavior if unauthenticated
+    // or the API call fails.
+    (async () => {
+      try {
+        // Prefer server-side retake when possible
+        const token = localStorage.getItem('access_token');
+        if (token && interviewResult && interviewResult.sessionId) {
+          try {
+            const res = await fetch(`${API_BASE}/api/interview/retake`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ interview_id: interviewResult.sessionId }),
+            });
+
+            if (res.ok) {
+              const payload = await res.json();
+              const qs = (payload?.questions || []).map((q: any, idx: number) => ({
+                id: q?.id != null ? String(q.id) : `restored_${idx}`,
+                question: q?.question || q?.text || '',
+                category: q?.category || 'General',
+                timeLimit: typeof q?.timeLimit === 'number' ? q.timeLimit : undefined,
+                difficulty: (q?.complexity as any) || 'medium',
+                skills: q?.skills || [],
+                company: q?.company || undefined,
+              }));
+
+              if (qs.length) {
+                try { sessionStorage.setItem('pmbot_questions', JSON.stringify(qs)); } catch {}
+                setInterviewQuestions(qs as any);
+                setSelectedInterviewType({
+                  id: 'retake',
+                  name: 'Retake Interview',
+                  description: 'Retake the selected past interview',
+                  duration: Math.max(10, Math.ceil((qs.length * 2) / 1)),
+                  questionCount: qs.length,
+                  skills: qs.flatMap((x:any) => x.skills || []),
+                  icon: 'refresh',
+                  color: '#f59e0b',
+                } as InterviewType);
+                setCurrentStep('interview');
+                return;
+              }
+            }
+          } catch (err) {
+            console.warn('Retake API failed, falling back to session restore', err);
+          }
+        }
+
+        // Fallback: restore last used questions from sessionStorage (existing behavior)
+        try {
+          const raw = sessionStorage.getItem('pmbot_questions');
+          const rawType = sessionStorage.getItem('pmbot_selected_type');
+          if (raw) {
+            const qs = JSON.parse(raw) as Question[];
+            setInterviewQuestions(qs);
+          }
+          if (rawType) {
+            const itype = JSON.parse(rawType) as InterviewType;
+            setSelectedInterviewType(itype);
+          }
+        } catch (e) {
+          /* ignore */
+        }
+        setCurrentStep('interview');
+      } catch (err) {
+        console.error('Retake flow failed', err);
+        // Ensure we still attempt the fallback path
+        try {
+          const raw = sessionStorage.getItem('pmbot_questions');
+          if (raw) setInterviewQuestions(JSON.parse(raw) as Question[]);
+        } catch {}
+        setCurrentStep('interview');
       }
-      if (rawType) {
-        const itype = JSON.parse(rawType) as InterviewType;
-        setSelectedInterviewType(itype);
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    setCurrentStep('interview');
+    })();
   };
 
   // Show a past interview's results in the Dashboard by setting interviewResult

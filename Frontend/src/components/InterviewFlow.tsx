@@ -78,6 +78,7 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isQuestionPlaying, setIsQuestionPlaying] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [stopTimer, setStopTimer] = useState(false);
 
   const { voiceState, startRecording, stopRecording, speakText, clearTranscript, isSupported } =
     useVoice();
@@ -193,6 +194,7 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
   }, [currentQuestion]);
 
   useEffect(() => {
+    if (stopTimer) return;
     if (timeRemaining > 0) {
       const timer = setTimeout(() => setTimeRemaining((t) => t - 1), 1000);
       return () => clearTimeout(timer);
@@ -248,6 +250,9 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
         setIsTransitioning(false);
       }, 500);
     } else {
+      // Stop the timer before submitting so the countdown doesn't continue
+      setStopTimer(true);
+      setTimeRemaining(0);
       onComplete(newAnswers);
     }
   };
