@@ -127,7 +127,7 @@ class AIService:
                 response = requests.post(
                     f"{self.llm_api_url}/api/generate",
                     json={"model": self.model, "prompt": prompt, "stream": False},
-                    timeout=120,
+                    timeout=600,
                 )
 
                 # Try multiple possible response structures
@@ -160,6 +160,64 @@ class AIService:
 
         print(f"[Ollama error] Failed after {tries} attempts: {last_exc}")
         return ""
+
+    def _wrapper_generate_answer(self, question_text: str, skills: list | None = None, model: str | None = None) -> str:
+        """Call the LLM wrapper `/api/generate-answer` to get a single structured model answer."""
+        try:
+            url = f"{self.llm_api_url.rstrip('/')}/api/generate-answer"
+            payload = {"question": question_text, "skills": skills or []}
+            if model:
+                payload["model"] = model
+            resp = requests.post(url, json=payload, timeout=600)
+            if resp.status_code == 200:
+                data = resp.json()
+                # wrapper returns {'answer': '...'}
+                ans = data.get('answer') or data.get('response') or ''
+                return (ans or '').strip()
+        except Exception as e:
+            print(f"[AIService _wrapper_generate_answer error] {e}")
+        return ""
+
+    def _wrapper_evaluate_answer(self, question_text: str, user_answer: str, model_answer: str, skills: list | None = None, model: str | None = None) -> dict:
+        """Call the LLM wrapper `/api/evaluate-answer` which returns structured JSON evaluation."""
+        try:
+            url = f"{self.llm_api_url.rstrip('/')}/api/evaluate-answer"
+            payload = {"question": question_text, "user_answer": user_answer, "model_answer": model_answer, "skills": skills or []}
+            if model_answer is None:
+                payload.pop('model_answer', None)
+            # If caller specified model param, use it; else allow an eval_model_override attribute
+            if model:
+                payload['model'] = model
+            elif getattr(self, 'eval_model_override', None):
+                payload['model'] = getattr(self, 'eval_model_override')
+            resp = requests.post(url, json=payload, timeout=600)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Normalize possible wrapper structures: accept nested suggestions.feedback or top-level keys
+                out = {}
+                out['similarity_score'] = float(data.get('similarity_score') or 0.0)
+                out['score'] = int(data.get('score') or 0)
+                out['ideal_answer'] = data.get('ideal_answer') or model_answer
+                # strengths/improvements may be top-level or under suggestions.feedback
+                strengths = data.get('strengths')
+                improvements = data.get('improvements')
+                feedback_text = data.get('feedback')
+                if (not strengths or not improvements) and isinstance(data.get('suggestions'), dict):
+                    fb = data.get('suggestions', {}).get('feedback', {})
+                    if isinstance(fb, dict):
+                        strengths = strengths or fb.get('strengths') or []
+                        improvements = improvements or fb.get('improvements') or []
+                        feedback_text = feedback_text or fb.get('comparison') or fb.get('feedback')
+                out['strengths'] = strengths or []
+                out['improvements'] = improvements or []
+                out['feedback'] = feedback_text or ''
+                out['suggestions'] = data.get('suggestions') or {}
+                return out
+            else:
+                print(f"[AIService _wrapper_evaluate_answer] HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"[AIService _wrapper_evaluate_answer error] {e}")
+        return {}
 
     def _find_best_match(self, text: str, valid_list: list) -> str:
         if not text or not valid_list:
@@ -626,6 +684,22 @@ class AIService:
 
         # Fallback: call generate_answer per question
         out = []
+        # Try wrapper per-question generation first (structured single-answer endpoint)
+        try:
+            for q in questions:
+                qa = q.get('question') or q.get('text') or ''
+                sk = q.get('skills') or []
+                a = self._wrapper_generate_answer(qa, sk, model='llama3')
+                if not a:
+                    # fallback to existing generate_answer which may call LLM directly
+                    a = self.generate_answer(qa, sk)
+                out.append(a or self._fallback_model_answer(qa, sk))
+            return out
+        except Exception as e:
+            print(f"[AIService generate_answers_batch wrapper fallback error] {e}")
+
+        # Final fallback: per-question generate_answer
+        out = []
         for q in questions:
             qa = q.get('question') or q.get('text') or ''
             sk = q.get('skills') or []
@@ -655,7 +729,13 @@ class AIService:
                 "Question:\n" + question_text + "\n\n" + skills_text + "\n\nAnswer:\n"
             )
 
-            ans = self._query_ollama(prompt)
+            # Prefer using the wrapper's generate endpoint with local llama3 model if available
+            try:
+                ans = self._wrapper_generate_answer(question_text, skills, model='llama3')
+            except Exception:
+                ans = ""
+            if not ans:
+                ans = self._query_ollama(prompt)
             if not ans or not ans.strip():
                 if getattr(self, 'force_llm', False):
                     raise Exception("LLM returned empty response and LLM_FORCE is enabled")
@@ -775,12 +855,49 @@ class AIService:
                 raise Exception("LLM did not return structured evaluation and LLM_FORCE is enabled")
         except Exception as e:
             print(f"[AIService evaluate_answer LLM error] {e}")
-
-        # Last-resort: use previous heuristic evaluator (kept simple and user-friendly)
+        # If structured LLM output was not produced, try the wrapper's evaluate endpoint
         try:
-            return self._heuristic_evaluate(question_text, user_answer, model_answer)
+            # Use qwen2:7b-instruct for evaluation (preferred for scoring/feedback)
+            wrapper_resp = self._wrapper_evaluate_answer(question_text, user_answer, model_answer, model='qwen2:7b-instruct')
+            # wrapper returns a dict with similarity_score, score, strengths, improvements, feedback
+            if wrapper_resp and isinstance(wrapper_resp, dict):
+                sim = float(wrapper_resp.get('similarity_score') or wrapper_resp.get('score', 0) / 100.0 or 0.0)
+                score = int(wrapper_resp.get('score') or round(sim * 100))
+                strengths = wrapper_resp.get('strengths') or wrapper_resp.get('strengths', [])
+                improvements = wrapper_resp.get('improvements') or wrapper_resp.get('weaknesses') or []
+                feedback_text = wrapper_resp.get('feedback') or wrapper_resp.get('comparison') or ''
+                return {
+                    'score': max(0, min(100, int(score))),
+                    'strengths': strengths,
+                    'weaknesses': improvements,
+                    'feedback': feedback_text,
+                    'similarity_score': float(sim),
+                    'ideal_answer': wrapper_resp.get('ideal_answer') or model_answer,
+                    'suggestions': wrapper_resp.get('suggestions') or {},
+                }
         except Exception as e:
-            print(f"[AIService evaluate_answer fallback error] {e}")
+            print(f"[AIService evaluate_answer wrapper fallback error] {e}")
+
+        # Heuristic fallback only if explicitly allowed via env var
+        try:
+            import os
+            allow_heur = os.environ.get('ALLOW_HEURISTIC', '0') == '1'
+            if allow_heur:
+                return self._heuristic_evaluate(question_text, user_answer, model_answer)
+            else:
+                # If heuristics are disabled, return a conservative structured response
+                # indicating the evaluation could not be completed by the LLM.
+                return {
+                    'score': 0,
+                    'strengths': [],
+                    'weaknesses': ['Evaluation unavailable - model did not return structured output.'],
+                    'feedback': 'Evaluation unavailable: LLM did not provide structured output. Try pulling a local model or enable ALLOW_HEURISTIC=1 for fallback.',
+                    'similarity_score': 0.0,
+                    'ideal_answer': model_answer,
+                    'suggestions': {},
+                }
+        except Exception as e:
+            print(f"[AIService evaluate_answer final fallback error] {e}")
             return {'score': 0, 'strengths': [], 'weaknesses': [], 'feedback': 'Evaluation failed.'}
 
     def evaluate_answers_batch(self, items: list[dict]) -> list[dict]:

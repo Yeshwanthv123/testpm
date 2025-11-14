@@ -36,11 +36,11 @@ services:
       PM_QUESTIONS_CSV: /backend/PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv
       CORS_ORIGINS: http://localhost:3000,http://localhost:5173
       DATABASE_URL: postgresql://user:password@db:5432/mydatabase
-      # point the backend at the in-compose llm stub service so it can reach it via Docker DNS
-      LLM_API_URL: http://pmbot-llm-stub:11434
-      # Preferred model to use (if available on your LLM endpoint)
+      # Point the backend at the LLM wrapper service (Flask on port 5000)
+      LLM_API_URL: http://pmbot-llm-stub:5000
+      # Preferred model to use with Ollama
       LLM_MODEL: "qwen2:7b-instruct"
-      # Enforce using the LLM; when enabled the backend will raise errors instead of using heuristics
+      # Enforce using the LLM
       LLM_FORCE: "1"
     volumes:
       # --- CHANGE 3: Volume mount updated from /app to /backend ---
@@ -80,7 +80,12 @@ services:
       context: ./backend/llm_stub
     container_name: pmbot-llm-stub
     ports:
-      - "11434:11434"
+      - "5000:5000"    # Flask wrapper only (Ollama runs on host)
+    environment:
+      # On Windows Docker Desktop, host.docker.internal resolves to the host machine
+      OLLAMA_URL: http://host.docker.internal:11434
+      # Fallback models (not used if OLLAMA_URL is reachable)
+      LLM_MODEL: qwen2:7b-instruct
     networks:
       - pmbot-net
 

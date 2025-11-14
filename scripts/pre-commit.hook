@@ -1,0 +1,34 @@
+#!/bin/bash
+# Git pre-commit hook to prevent accidental .env file commits
+# Install: cp scripts/pre-commit.hook .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+# Check for .env files being staged
+if git diff --cached --name-only | grep -E "^(backend/\.env|Frontend/\.env)$"; then
+    echo ""
+    echo "❌ ERROR: You're about to commit .env files!"
+    echo ""
+    echo ".env files should never be committed to version control."
+    echo "They contain sensitive information like API keys and secrets."
+    echo ""
+    echo "To fix this:"
+    echo "  1. Unstage the .env file: git reset HEAD <file>"
+    echo "  2. Commit only .env.example: git add *.env.example"
+    echo "  3. Add .env files to .gitignore if not already there"
+    echo ""
+    exit 1
+fi
+
+# Check for other sensitive files
+if git diff --cached --name-only | grep -E "(client_secret|private_key|\.key|\.pem)"; then
+    echo ""
+    echo "⚠️  WARNING: Sensitive files detected in staged changes!"
+    echo "Please verify you meant to commit these files."
+    echo ""
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+exit 0

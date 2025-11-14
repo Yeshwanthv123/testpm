@@ -25,14 +25,16 @@ def _infer_csv_path() -> Optional[str]:
       - /app/PM_Questions_dedup.csv
     """
     env_path = os.getenv("PM_QUESTIONS_CSV")
+    # Prefer the final humanized CSV if present, otherwise fall back to env or older names
     candidates = [
         env_path,
+        os.path.join(os.getcwd(), "PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv"),
+        os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv"),
         os.path.join(os.getcwd(), "PM_Questions_dedup_final_clean.csv"),
         os.path.join(os.getcwd(), "PM_Questions_dedup.csv"),
         os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_dedup_final_clean.csv"),
         os.path.join(os.path.dirname(os.getcwd()), "PM_Questions_dedup.csv"),
-        "/app/PM_Questions_dedup_final_clean.csv",
-        "/app/PM_Questions_dedup.csv",
+        "/app/PM_Questions_FINAL_12x2000_Formatted_Final_HUMANIZED.csv",
     ]
     for p in candidates:
         if p and os.path.isfile(p):
@@ -128,30 +130,50 @@ def _canonicalize_years(raw: Optional[str]) -> Optional[str]:
       - 5..8  -> '5-8 years'
       - 8+    -> '8+ years'
     """
+    # Map many CSV variants into the canonical buckets used by the app:
+    #   "0-2", "3-5", "6-10", "10+"
     rng = _parse_range(raw or "")
     if rng is None:
-        return raw  # keep whatever was there; router is lenient if unparsable
+        # try simple textual mappings
+        if not raw:
+            return None
+        t = raw.strip().lower()
+        if t in ("0-2", "0-1", "1-2"):
+            return "0-2"
+        if t in ("3-5", "2-3", "2-4", "2-5"):
+            return "3-5"
+        if t in ("5-8", "6-10", "8-10"):
+            return "6-10"
+        if t.endswith("+"):
+            return "10+"
+        return raw
 
     lo, hi = rng
-    # Normalize infinities/singletons into buckets by overlap
+    # Determine which canonical bucket the parsed range overlaps
     def overlaps(a: Tuple[float, float], b: Tuple[float, float]) -> bool:
         (a_lo, a_hi), (b_lo, b_hi) = a, b
         return not (a_hi < b_lo or b_hi < a_lo)
 
     canonical_buckets = [
-        ((0.0, 1.0), "0-1 years"),
-        ((1.0, 2.0), "1-2 years"),
-        ((2.0, 3.0), "2-3 years"),
-        ((3.0, 5.0), "3-5 years"),
-        ((5.0, 8.0), "5-8 years"),
-        ((8.0, math.inf), "8+ years"),
+        ((0.0, 2.0), "0-2"),
+        ((3.0, 5.0), "3-5"),
+        ((6.0, 10.0), "6-10"),
+        ((10.0, math.inf), "10+"),
     ]
 
     for (blo, bhi), label in canonical_buckets:
         if overlaps((lo, hi), (blo, bhi)):
             return label
-    # Fallback: keep original string
-    return raw
+
+    # Fallback using midpoint
+    mid = (lo + (hi if hi != math.inf else lo + 10)) / 2.0
+    if mid <= 2:
+        return "0-2"
+    if mid <= 5:
+        return "3-5"
+    if mid <= 10:
+        return "6-10"
+    return "10+"
 
 
 # ------------------------------ Core Loader -------------------------------- #

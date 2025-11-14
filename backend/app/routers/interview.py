@@ -21,7 +21,8 @@ from fastapi.encoders import jsonable_encoder
 router = APIRouter(prefix="/interview", tags=["interview"])
 
 # How many questions to return each time
-TOTAL_QUESTIONS_TO_RETURN = 10
+# Reduced per request to match new requirement: 8 questions per interview
+TOTAL_QUESTIONS_TO_RETURN = 8
 # Avoid repeating questions for the same browser session for N days
 NO_REPEAT_DAYS_DEFAULT = 90
 
@@ -35,22 +36,33 @@ def normalize_experience(experience: Optional[str]) -> Optional[str]:
     if not experience:
         return None
     exp = experience.strip().lower()
-    # Map common patterns to the CSV format
-    exp_map = {
-        "0-1": "0-2",
-        "0-2": "0-2",
-        "1-2": "0-2",
-        "2-4": "2-4",
-        "2-5": "2-4",
-        "4-5": "2-4",
-        "5-8": "5-8",
-        "5-7": "5-8",
-        "7-8": "5-8",
-        "8+": "8+",
-        "8 years": "8+",
-        "9+": "8+",
-    }
-    return exp_map.get(exp, experience.strip())
+    # Map input to canonical buckets used in CSV: 0-2, 3-5, 6-10, 10+
+    m = exp.replace("years", "").replace("year", "").replace("yrs", "").replace(" ", "")
+    # direct matches
+    if m in ("0-2", "0-1", "1-2"):
+        return "0-2"
+    if m in ("3-5", "2-3", "2-4", "2-5", "3-4"):
+        return "3-5"
+    if m in ("5-8", "6-10", "5-10", "6-8", "8-10"):
+        return "6-10"
+    if m.endswith("+"):
+        try:
+            val = int(m[:-1])
+            return "10+" if val >= 10 else ("6-10" if val >= 6 else ("3-5" if val >= 3 else "0-2"))
+        except Exception:
+            return "10+"
+    # try numeric single value
+    try:
+        v = int(re.search(r"(\d+)", m).group(1))
+        if v <= 2:
+            return "0-2"
+        if 3 <= v <= 5:
+            return "3-5"
+        if 6 <= v <= 10:
+            return "6-10"
+        return "10+"
+    except Exception:
+        return None
 
 
 # -------------- Experience matching --------------- #

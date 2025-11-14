@@ -33,6 +33,69 @@ def _clean_str(s: Optional[str]) -> Optional[str]:
     return t if t else None
 
 
+def _map_years_to_bucket(s: Optional[str]) -> Optional[str]:
+    """
+    Map a raw Years of Experience value from CSV into one of the canonical
+    buckets used by the app: "0-2", "3-5", "6-10", "10+".
+    """
+    if not s:
+        return None
+    t = str(s).strip().lower()
+    # Common literal forms
+    if t in ("0-2", "0-1", "1-2", "0-2 years", "0-1 years", "1-2 years"):
+        return "0-2"
+    if t in ("3-5", "2-3 years", "2-3", "2-3 years"):
+        return "3-5"
+    if t in ("3-5 years", "2-4", "2-4 years", "2-5", "2-5 years"):
+        return "3-5"
+    if t in ("5-8", "5-8 years", "5-8 yrs"):
+        return "6-10"
+    if t in ("6-10", "6-10 years"):
+        return "6-10"
+    if t in ("8 years", "8-10", "8-12", "8-10 years", "8-12 years"):
+        return "6-10"
+    if t.endswith("+"):
+        # e.g., "10+", "12+"
+        try:
+            val = int(t[:-1])
+            return "10+" if val >= 10 else ("6-10" if val >= 6 else ("3-5" if val >= 3 else "0-2"))
+        except Exception:
+            return "10+"
+    # try parsing numeric range
+    try:
+        # remove words
+        clean = t.replace("years", "").replace("year", "").replace("yrs", "").replace(" ", "")
+        if "-" in clean:
+            a, b = clean.split("-", 1)
+            a_v = int(a)
+            b_v = int(b)
+            lo, hi = min(a_v, b_v), max(a_v, b_v)
+            # determine overlap with buckets
+            if hi <= 2:
+                return "0-2"
+            if lo <= 3 and hi <= 5:
+                return "3-5"
+            if lo <= 6 and hi <= 10:
+                return "6-10"
+            if lo >= 10 or hi > 10:
+                return "10+"
+    except Exception:
+        pass
+    # Fallback: check for digits
+    import re
+    m = re.search(r"(\d+)", t)
+    if m:
+        v = int(m.group(1))
+        if v <= 2:
+            return "0-2"
+        if 3 <= v <= 5:
+            return "3-5"
+        if 6 <= v <= 10:
+            return "6-10"
+        return "10+"
+    return None
+
+
 def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict[str, int]:
     path = csv_path or _infer_csv_path()
     if not path or not os.path.isfile(path):
@@ -58,7 +121,8 @@ def load_questions_from_csv(db: Session, csv_path: Optional[str] = None) -> Dict
                 "category": _clean_str(row.get("Category")),
                 "complexity": _clean_str(row.get("Complexity")),
                 "experience_level": _clean_str(row.get("Experience Level")),
-                "years_of_experience": _clean_str(row.get("Years of Experience")),
+                # Normalize years_of_experience to canonical buckets
+                "years_of_experience": _map_years_to_bucket(_clean_str(row.get("Years of Experience"))),
             }
             
             if "text" in model_cols:

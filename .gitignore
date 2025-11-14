@@ -8,26 +8,32 @@ node_modules/
 dist/
 build/
 
-# Env files
+# Env files - EXCLUDE actual .env files but INCLUDE .env.example
 .env
 *.env
 backend/.env
 Frontend/.env
+!backend/.env.example
+!Frontend/.env.example
 
 # OS/editor
 .DS_Store
 *.log
+
 # --- env & secrets ---
 .env
 *.env
 backend/.env
 Frontend/.env
+!backend/.env.example
+!Frontend/.env.example
 client_secret_*.json
 
 # --- python ---
 __pycache__/
 *.pyc
 .venv/
+venv/
 
 # --- node ---
 node_modules/
@@ -40,3 +46,20 @@ build/
 # --- os/editor ---
 .DS_Store
 *.log
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Docker
+.dockerignore
+

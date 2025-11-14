@@ -20,6 +20,7 @@ function App() {
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
   const [jobDescription, setJobDescription] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [interviewQuestions, setInterviewQuestions] = useState<Question[]>([]);
 
@@ -125,8 +126,29 @@ function App() {
 
     // Call backend evaluation endpoint to get AI-generated scores/feedback.
     (async () => {
+      setIsSubmitting(true);
       try {
         const token = localStorage.getItem('access_token');
+        const payloadItems = answers.map((a) => {
+          // Robust question lookup: try current state, then sessionStorage, then global var
+          let q = interviewQuestions.find((q) => String(q.id) === String(a.questionId));
+          if (!q) {
+            try {
+              const cached = sessionStorage.getItem('pmbot_questions');
+              if (cached) {
+                const parsed = JSON.parse(cached) as any[];
+                q = parsed.find((pq) => String(pq.id) === String(a.questionId));
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+          if (!q && (window as any).__PMBOT_QUESTIONS) {
+            q = (window as any).__PMBOT_QUESTIONS.find((pq: any) => String(pq.id) === String(a.questionId));
+          }
+          return { question: q || {}, user_answer: a.answer };
+        });
+
         const evalResp = await fetch(`${API_BASE}/api/interview/evaluate-answers`, {
           method: 'POST',
           headers: {
@@ -134,12 +156,7 @@ function App() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(sessionId ? { 'X-Session-Key': sessionId } : {}),
           },
-          body: JSON.stringify({
-            items: answers.map((a) => {
-              const q = interviewQuestions.find((q) => String(q.id) === String(a.questionId));
-              return { question: q || {}, user_answer: a.answer };
-            }),
-          }),
+          body: JSON.stringify({ items: payloadItems }),
         });
 
         if (evalResp.ok) {
@@ -148,26 +165,21 @@ function App() {
           const overallScore = evalData.overall_score || 0;
 
           // Transform per_question evaluations into skillScores for dashboard
-          // Extract unique categories/skills from per_question items
           const categoryScores: { [key: string]: number[] } = {};
           const questionDetails: any[] = [];
-          
+
           perQuestion.forEach((item: any) => {
             const qObj = item.question || {};
             const category = qObj.category || qObj.skills?.[0] || 'General';
             const score = item.score || 0;
             const feedback = item.feedback || '';
-            const strengths = item.strengths || [];
-            const weaknesses = item.weaknesses || [];
-            const modelAnswer = item.model_answer || '';
-            
-            // Aggregate scores by category
-            if (!categoryScores[category]) {
-              categoryScores[category] = [];
-            }
+            const strengths = item.strengths || item.suggestions?.feedback?.strengths || [];
+            const weaknesses = item.weaknesses || item.suggestions?.feedback?.improvements || item.improvements || [];
+            const modelAnswer = item.model_answer || item.ideal_answer || '';
+
+            if (!categoryScores[category]) categoryScores[category] = [];
             categoryScores[category].push(score);
-            
-            // Store question details for perQuestionEvaluations
+
             questionDetails.push({
               question: qObj,
               model_answer: modelAnswer,
@@ -178,7 +190,6 @@ function App() {
             });
           });
 
-          // Create skillScores from aggregated category scores
           const skillScores: SkillScore[] = Object.entries(categoryScores).map(([skill, scores]) => {
             const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
             return {
@@ -202,13 +213,18 @@ function App() {
             detailedFeedback: `Overall Performance: ${Math.round(overallScore)}/100. ${skillScores.map(s => `${s.skill}: ${s.score}/100`).join('. ')}`,
             perQuestionEvaluations: questionDetails,
           };
-          
+
           setInterviewResult(result);
+          setIsSubmitting(false);
           setCurrentStep('results');
           return;
         }
       } catch (err) {
+        console.error('AI evaluation request failed:', err);
+        // eslint-disable-next-line no-console
         console.warn('AI evaluation failed, falling back to local scoring', err);
+      } finally {
+        setIsSubmitting(false);
       }
       // Fallback: original heuristic scoring
       const skillScores: SkillScore[] = selectedInterviewType.skills.map((skill) => {
@@ -407,6 +423,15 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isSubmitting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white p-6 rounded-lg shadow-lg text-center">
+            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <div className="font-semibold">Submitting answers — generating AI feedback...</div>
+            <div className="text-sm text-gray-600 mt-2">This can take up to a minute depending on model latency.</div>
+          </div>
+        </div>
+      )}
       {currentStep !== 'login' && user && (
         <Navigation
           currentStep={currentStep}
