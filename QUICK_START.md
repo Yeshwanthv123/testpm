@@ -117,6 +117,22 @@ docker compose exec pmbot-db psql -U postgres -d mydatabase
 ## ❓ Issues?
 
 ### Port already in use?
+**Automatic Fix (Recommended):**
+
+Windows:
+```bash
+fix-ports.bat
+```
+
+macOS/Linux:
+```bash
+chmod +x fix-ports.sh
+./fix-ports.sh
+```
+
+This will automatically kill any processes using ports 3000, 8000, 5432, or 5000.
+
+**Manual Fix:**
 ```bash
 # Find what's using port 3000
 # Windows:
@@ -130,8 +146,9 @@ lsof -i :3000
 
 ### Services won't start?
 1. Check Docker is running: `docker --version`
-2. Check logs: `docker compose logs -f`
-3. See COMPLETE_SETUP_GUIDE.md for detailed troubleshooting
+2. Run port fix: `fix-ports.bat` or `./fix-ports.sh`
+3. Check logs: `docker compose logs -f`
+4. See COMPLETE_SETUP_GUIDE.md for detailed troubleshooting
 
 ### Docker takes too long to start?
 This is normal on first run (downloading images, initializing database). Subsequent runs are much faster.

@@ -63,17 +63,22 @@ Once setup completes, open these in your browser:
 After installing, run the setup script again.
 
 ### 2. Port already in use?
-**Windows:**
+**Automatic Fix (Easiest):**
+
+Windows:
 ```bash
-netstat -ano | findstr :3000
+fix-ports.bat
 ```
 
-**macOS/Linux:**
+macOS/Linux:
 ```bash
-lsof -i :3000
+chmod +x fix-ports.sh
+./fix-ports.sh
 ```
 
-Kill the process or wait a minute and retry.
+**Manual Check:**
+- Windows: `netstat -ano | findstr :3000`
+- macOS/Linux: `lsof -i :3000`
 
 ### 3. Services won't start?
 ```bash
