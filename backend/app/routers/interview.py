@@ -397,41 +397,41 @@ async def start_interview_with_jd(
 ):
     """
     1. Analyze a Job Description (JD) using local AI service.
-    2. Extract Company and Role (Experience Level).
-    3. Fetch one matching question from the question pool.
+    2. Extract Company and Years of Experience.
+    3. Fetch matching questions from the question pool.
     """
     try:
         print("[InterviewRouter] Sending JD to AI service...")
         ai_details = await ai_service.extract_details_from_jd(jd_upload.jd_text)
 
         company = ai_details.get("company_name")
-        role = ai_details.get("role") or ai_details.get("experience_level")
+        years_of_experience = ai_details.get("years_of_experience")  # e.g., "6-10"
         level = ai_details.get("level")
 
-        print(f"[InterviewRouter] AI extracted → Company={company}, Role={role}, Level={level}")
+        print(f"[InterviewRouter] AI extracted → Company={company}, YearsOfExperience={years_of_experience}, Level={level}")
 
         questions_list = _pick_questions(
             db,
             company=company,
-            role=role,
-            experience=None,
-            limit=1,
+            role=None,  # No longer using role
+            experience=years_of_experience,  # Use years_of_experience instead
+            limit=8,
             session_key=None,
             no_repeat_days=0,
         )
 
         if not questions_list:
-            raise HTTPException(status_code=404, detail="No questions found for extracted role/company.")
+            raise HTTPException(status_code=404, detail="No questions found for extracted company/experience level.")
 
         return {
             "status": "success",
             "data": {
                 "ai_extracted": {
                     "company_name": company,
-                    "role": role,
+                    "years_of_experience": years_of_experience,
                     "level": level,
                 },
-                "question": questions_list[0],
+                "questions": questions_list,
             },
         }
 
@@ -676,22 +676,33 @@ def get_interview_metrics(
     older_avg = (sum(older_scores) / len(older_scores)) if older_scores else 0
     
     # Calculate improvement rate
-    if older_avg > 0:
-        # Standard percentage improvement calculation
+    if len(older_scores) >= 3 and older_avg > 0:
+        # Need at least 3 older scores for meaningful comparison
         raw_improvement = ((recent_avg - older_avg) / older_avg) * 100
-        # Cap improvement rate to reasonable range: -100% to +100%
+        # Cap improvement rate to realistic range: -100% to +100%
         improvementRate = round(max(min(raw_improvement, 100), -100), 2)
-    elif recent_avg > 0 and older_avg == 0:
-        # Only have recent scores, not enough history for improvement calculation
-        improvementRate = 0
     else:
-        # No scores available
+        # Not enough history for improvement calculation
         improvementRate = 0
 
-    # Percentile rank: compute average score per user and compare (aggregate)
-    all_user_avgs = db.query(func.avg(Evaluation.overall_score).label("avg_score")).filter(
-        Evaluation.overall_score.isnot(None)
-    ).group_by(Evaluation.user_id).all()
+    # Percentile rank: compute average score per user and compare (aggregate by region if user has region)
+    user_region = getattr(current_user, 'region', None) if current_user else None
+    
+    # Build query for all users to compare against
+    if user_region:
+        # Regional percentile: compare only against users in same region
+        all_user_avgs = db.query(func.avg(Evaluation.overall_score).label("avg_score")).join(
+            User, Evaluation.user_id == User.id
+        ).filter(
+            Evaluation.overall_score.isnot(None),
+            User.region == user_region
+        ).group_by(Evaluation.user_id).all()
+    else:
+        # Global percentile: compare against all users
+        all_user_avgs = db.query(func.avg(Evaluation.overall_score).label("avg_score")).filter(
+            Evaluation.overall_score.isnot(None)
+        ).group_by(Evaluation.user_id).all()
+    
     all_avgs = [r[0] for r in all_user_avgs if r[0] is not None]
     if all_avgs:
         better_than = sum(1 for a in all_avgs if avgScore > a)
@@ -888,3 +899,96 @@ def retake_interview(
             serialized.append(_serialize_question(q, sanitize_to=q.company))
 
     return {"questions": serialized}
+
+
+# -------------- User ranking and peer comparison --------------- #
+@router.get("/my-ranking")
+def get_my_ranking(
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get current user's ranking and peer comparison data.
+    Returns:
+    - avgScore: User's average score across all interviews
+    - percentileRank: User's percentile rank globally
+    - regionalPercentile: User's percentile rank in their region
+    - experiencePercentile: User's percentile rank by experience level
+    - totalCandidates: Total number of candidates globally
+    - regionalCandidates: Total candidates in user's region
+    """
+    if not current_user:
+        return {
+            "avgScore": 0,
+            "percentileRank": 0,
+            "regionalPercentile": 0,
+            "experiencePercentile": 0,
+            "totalCandidates": 0,
+            "regionalCandidates": 0,
+        }
+
+    # Get user's average score and interview count
+    user_stats = db.query(
+        func.avg(Evaluation.overall_score).label('avg_score'),
+        func.count(Evaluation.id).label('interview_count')
+    ).filter(
+        Evaluation.user_id == current_user.id,
+        Evaluation.overall_score.isnot(None)
+    ).first()
+
+    avg_score = float(user_stats.avg_score) if user_stats and user_stats.avg_score else 0
+    interview_count = user_stats.interview_count if user_stats else 0
+
+    # Global percentile: compare against all users' average scores
+    all_users_avg = db.query(
+        func.avg(Evaluation.overall_score).label('avg_score')
+    ).filter(
+        Evaluation.overall_score.isnot(None)
+    ).group_by(Evaluation.user_id).all()
+
+    all_avgs = [float(r.avg_score) for r in all_users_avg if r.avg_score]
+    global_better_than = sum(1 for a in all_avgs if avg_score > a)
+    percentile_rank = round((global_better_than / len(all_avgs)) * 100, 2) if all_avgs else 0
+    total_candidates = len(all_avgs)
+
+    # Regional percentile: compare against peers in same region
+    regional_percentile = percentile_rank
+    regional_candidates = total_candidates
+    
+    if current_user.region:
+        regional_users_avg = db.query(
+            func.avg(Evaluation.overall_score).label('avg_score')
+        ).join(User, Evaluation.user_id == User.id).filter(
+            Evaluation.overall_score.isnot(None),
+            User.region == current_user.region
+        ).group_by(Evaluation.user_id).all()
+
+        regional_avgs = [float(r.avg_score) for r in regional_users_avg if r.avg_score]
+        regional_better_than = sum(1 for a in regional_avgs if avg_score > a)
+        regional_percentile = round((regional_better_than / len(regional_avgs)) * 100, 2) if regional_avgs else 0
+        regional_candidates = len(regional_avgs)
+
+    # Experience percentile: compare against users with similar experience
+    experience_percentile = percentile_rank
+    
+    if current_user.experience:
+        exp_users_avg = db.query(
+            func.avg(Evaluation.overall_score).label('avg_score')
+        ).join(User, Evaluation.user_id == User.id).filter(
+            Evaluation.overall_score.isnot(None),
+            User.experience == current_user.experience
+        ).group_by(Evaluation.user_id).all()
+
+        exp_avgs = [float(r.avg_score) for r in exp_users_avg if r.avg_score]
+        exp_better_than = sum(1 for a in exp_avgs if avg_score > a)
+        experience_percentile = round((exp_better_than / len(exp_avgs)) * 100, 2) if exp_avgs else 0
+
+    return {
+        "avgScore": round(avg_score, 2),
+        "percentileRank": percentile_rank,
+        "regionalPercentile": regional_percentile,
+        "experiencePercentile": experience_percentile,
+        "totalCandidates": total_candidates,
+        "regionalCandidates": regional_candidates,
+        "interviewCount": interview_count,
+    }

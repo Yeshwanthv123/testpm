@@ -291,6 +291,41 @@ def evaluate_answer(question_text, model_answer, user_answer):
     return evaluation
     
 
+@app.route('/api/evaluate-answer', methods=['POST'])
+def evaluate_answer_endpoint():
+    """
+    Evaluate a user's answer against a model/ideal answer.
+    Expects: {question, user_answer, model_answer, skills}
+    Returns: {score, similarity_score, strengths, improvements, feedback, ideal_answer, suggestions}
+    """
+    try:
+        payload = request.get_json() or {}
+        question = payload.get('question', '')
+        user_answer = payload.get('user_answer', '')
+        model_answer = payload.get('model_answer', '')
+        
+        # If no model answer provided, generate one
+        if not model_answer:
+            model_answer = generate_model_answer(question)
+        
+        # Use our evaluation function
+        evaluation = evaluate_answer(question, model_answer, user_answer)
+        
+        return jsonify(evaluation), 200
+    except Exception as e:
+        print(f"[LLM Stub /api/evaluate-answer error] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "score": 0,
+            "similarity_score": 0.0,
+            "strengths": [],
+            "improvements": ["Evaluation service error"],
+            "feedback": f"Error: {str(e)[:100]}",
+            "ideal_answer": "",
+            "suggestions": {}
+        }), 500
+
 @app.route('/api/tags', methods=['GET'])
 def tags():
     # Only report Qwen model as available

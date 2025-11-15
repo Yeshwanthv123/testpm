@@ -26,6 +26,8 @@ class User(Base):
     region = Column(String(128), nullable=True)
     # Storing as JSON (works across DB backends)
     targetCompanies = Column(JSON, nullable=True)
+    # Profile picture URL or base64 encoded image
+    profile_picture = Column(Text, nullable=True)
     # --- END ADDED FIELDS ---
 
     is_active = Column(Boolean, nullable=False, server_default="1")

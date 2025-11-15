@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from jose import jwt, JWTError
 
 from ..database import get_db
-from ..models import User
+from ..models import User, Evaluation
 
 router = APIRouter(tags=["auth"])
 
@@ -142,6 +142,7 @@ def me(current: User = Depends(get_current_user)):
         **({ "experience": getattr(current, "experience") } if hasattr(current, "experience") else {}),
         **({ "region": getattr(current, "region") } if hasattr(current, "region") else {}),
         **({ "targetCompanies": getattr(current, "targetCompanies") } if hasattr(current, "targetCompanies") else {}),
+        **({ "profile_picture": getattr(current, "profile_picture") } if hasattr(current, "profile_picture") and getattr(current, "profile_picture") else {}),
     }
 
 @router.patch("/me")
@@ -294,3 +295,208 @@ def google_oauth_callback(request: Request,
         return RedirectResponse(f"{FRONTEND_URL}/#auth={fragment}", status_code=302)
 
     return JSONResponse(payload)
+
+
+# ============================================================================
+# PROFILE PICTURE ENDPOINTS
+# ============================================================================
+
+@router.post("/profile-picture")
+def upload_profile_picture(
+    profile_picture_data: Dict[str, str],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload profile picture for the current user.
+    Expects: { "profile_picture": "data:image/png;base64,..." }
+    """
+    try:
+        if not profile_picture_data or "profile_picture" not in profile_picture_data:
+            raise HTTPException(status_code=400, detail="No image data provided")
+
+        image_data = profile_picture_data["profile_picture"]
+        
+        # Validate it's a data URL
+        if not image_data.startswith("data:image/"):
+            raise HTTPException(status_code=400, detail="Invalid image format")
+
+        # Size limit: 5MB
+        if len(image_data) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Image too large (max 5MB)")
+
+        user = db.query(User).filter(User.id == current_user.id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user.profile_picture = image_data
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "status": "success",
+            "message": "Profile picture updated",
+            "profile_picture": user.profile_picture
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/profile")
+def get_profile(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get current user's profile including profile picture.
+    """
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "experience": current_user.experience,
+        "currentRole": current_user.currentRole,
+        "region": current_user.region,
+        "targetCompanies": current_user.targetCompanies,
+        "profile_picture": current_user.profile_picture
+    }
+
+
+@router.put("/profile")
+def update_profile(
+    profile_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update user profile information.
+    """
+    try:
+        user = db.query(User).filter(User.id == current_user.id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Update allowed fields
+        if "full_name" in profile_data:
+            user.full_name = profile_data["full_name"]
+        if "experience" in profile_data:
+            user.experience = profile_data["experience"]
+        if "currentRole" in profile_data:
+            user.currentRole = profile_data["currentRole"]
+        if "region" in profile_data:
+            user.region = profile_data["region"]
+        if "targetCompanies" in profile_data:
+            user.targetCompanies = profile_data["targetCompanies"]
+
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "status": "success",
+            "message": "Profile updated",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "experience": user.experience,
+                "currentRole": user.currentRole,
+                "region": user.region,
+                "targetCompanies": user.targetCompanies,
+                "profile_picture": user.profile_picture
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------- Admin / Migration -------------------- #
+@router.post("/admin/migrate-regions")
+def migrate_user_regions(db: Session = Depends(get_db)):
+    """
+    Admin endpoint to assign 'US' region to all users without one.
+    This is a one-time migration to populate existing users for regional leaderboards.
+    """
+    try:
+        # Count users without region
+        users_without_region = db.query(User).filter(
+            (User.region == None) | (User.region == '')
+        ).all()
+        
+        if not users_without_region:
+            return {
+                "message": "All users already have regions assigned",
+                "updated_count": 0
+            }
+        
+        # Assign 'US' as default region
+        for user in users_without_region:
+            user.region = 'US'
+        
+        db.commit()
+        
+        return {
+            "message": f"Successfully assigned 'US' region to {len(users_without_region)} users",
+            "updated_count": len(users_without_region)
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/create-test-users")
+def create_test_users(db: Session = Depends(get_db)):
+    """
+    Admin endpoint to create test users with regions for leaderboard testing.
+    Creates users in different regions with sample interview results.
+    """
+    try:
+        regions = ['US', 'EU', 'Asia Pacific', 'BR', 'Africa', 'AE']
+        test_users = []
+        created_count = 0
+        
+        for region in regions:
+            for i in range(1, 6):  # Create 5 test users per region
+                email = f"test_{region.lower().replace(' ', '_')}_{i}@example.com"
+                
+                # Check if user already exists
+                existing = db.query(User).filter(User.email == email).first()
+                if existing:
+                    continue
+                
+                # Create user
+                user = User(
+                    email=email,
+                    hashed_password=_sha256("test123"),  # dummy password
+                    full_name=f"Test User {region} {i}",
+                    region=region,
+                    experience='3-5',
+                    is_active=True
+                )
+                db.add(user)
+                db.flush()  # Get user ID
+                
+                # Create sample evaluation for this user
+                score = 60 + (i * 5) + (hash(region) % 20)  # Varied scores
+                eval_record = Evaluation(
+                    user_id=user.id,
+                    overall_score=score,
+                    details={"per_question": []}
+                )
+                db.add(eval_record)
+                created_count += 1
+                test_users.append({"email": email, "region": region})
+        
+        db.commit()
+        
+        return {
+            "message": f"Created {created_count} test users across regions",
+            "test_users": test_users,
+            "regions": regions
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+

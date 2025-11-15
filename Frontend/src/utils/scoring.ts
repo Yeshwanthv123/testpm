@@ -70,8 +70,29 @@ export const generateFeedback = (score: number, skill: string): string => {
 };
 
 export const calculatePercentile = (score: number, skill: string): number => {
-  // Mock percentile calculation - in real app, this would query actual data
-  const basePercentile = (score / 100) * 80; // Base percentile
-  const randomVariation = Math.random() * 20 - 10; // Add some variation
+  // This is a mock - percentiles should come from actual leaderboard data
+  // In real implementation, the backend provides user percentile via /api/leaderboard/user/{id}
+  const basePercentile = (score / 100) * 80;
+  const randomVariation = Math.random() * 20 - 10;
   return Math.max(5, Math.min(95, Math.round(basePercentile + randomVariation)));
+};
+
+export const fetchUserPercentile = async (userId: string, token: string | null): Promise<number> => {
+  try {
+    if (!token) return 50; // Default to 50 if not logged in
+    
+    const API_BASE = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000';
+    const response = await fetch(`${API_BASE}/api/leaderboard/user/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.percentile || 50;
+    }
+  } catch (error) {
+    console.error('Failed to fetch user percentile:', error);
+  }
+  
+  return 50; // Default fallback
 };

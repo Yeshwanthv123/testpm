@@ -70,7 +70,7 @@ const Navigation: React.FC<NavigationProps> = ({
     if (currentStepIndex > 0) onNavigate(steps[currentStepIndex - 1].id);
   };
 
-  const handleHomeNavigation = () => onNavigate("setup");
+  const handleHomeNavigation = () => onNavigate("onboarding");
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -193,6 +193,10 @@ const Navigation: React.FC<NavigationProps> = ({
             onLogout={onLogout}
             onStartInterview={onStartInterview}
             onViewResult={onViewResult}
+            onNavigate={(step) => {
+              setShowProfile(false);
+              onNavigate(step);
+            }}
           />
         </ProfileErrorBoundary>
       )}

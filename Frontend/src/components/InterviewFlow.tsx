@@ -26,6 +26,26 @@ interface InterviewFlowProps {
 
 const DEFAULT_PER_QUESTION_SECONDS = 180;
 
+// Company logo URLs
+const COMPANY_LOGOS: Record<string, string> = {
+  'Google': 'https://www.google.com/favicon.ico',
+  'Meta': 'https://www.facebook.com/favicon.ico',
+  'Amazon': 'https://www.amazon.com/favicon.ico',
+  'Apple': 'https://www.apple.com/favicon.ico',
+  'Microsoft': 'https://www.microsoft.com/favicon.ico',
+  'Netflix': 'https://www.netflix.com/favicon.ico',
+  'Tesla': 'https://www.tesla.com/favicon.ico',
+  'Twitter': 'https://www.twitter.com/favicon.ico',
+  'LinkedIn': 'https://www.linkedin.com/favicon.ico',
+  'Uber': 'https://www.uber.com/favicon.ico',
+  'Zoho': 'https://www.zoho.com/favicon.ico',
+  'Freshworks': 'https://www.freshworks.com/favicon.ico',
+};
+
+const getCompanyLogo = (company: string): string => {
+  return COMPANY_LOGOS[company] || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjNjU2NUY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxNiIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DPC90ZXh0Pjwvc3ZnPg==';
+};
+
 function deriveSkills(category?: string, difficulty?: string): string[] {
   const cat = (category || '').toLowerCase();
   const map: Record<string, string[]> = {
@@ -327,6 +347,14 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
+              <img 
+                src={getCompanyLogo(interviewType.name)} 
+                alt={interviewType.name}
+                className="w-12 h-12 rounded-lg object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjNjU2NUY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxNiIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DPC90ZXh0Pjwvc3ZnPg==';
+                }}
+              />
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">{interviewType.name}</h1>
                 <p className="text-gray-600 text-sm">

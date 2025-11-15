@@ -35,14 +35,14 @@ and extract these three things:
 1️⃣ company_name — must be one of these or closest match:
 {VALID_COMPANIES[:80]}
 
-2️⃣ role — must be one of these:
-{VALID_ROLES}
+2️⃣ years_of_experience — infer from JD and return one of:
+   "0-2", "3-5", "6-10", "10+"
 
-3️⃣ level — must be one of these:
+3️⃣ level — must be one of these (job category/topic):
 {VALID_LEVELS}
 
 Respond ONLY in valid JSON:
-{{"company_name": "...", "role": "...", "level": "..."}}.
+{{"company_name": "...", "years_of_experience": "...", "level": "..."}}.
 """
 
 class AIService:
@@ -881,7 +881,7 @@ class AIService:
         # Heuristic fallback only if explicitly allowed via env var
         try:
             import os
-            allow_heur = os.environ.get('ALLOW_HEURISTIC', '0') == '1'
+            allow_heur = os.environ.get('ALLOW_HEURISTIC', '1') == '1'
             if allow_heur:
                 return self._heuristic_evaluate(question_text, user_answer, model_answer)
             else:
@@ -962,13 +962,16 @@ class AIService:
                 data = json.loads(raw[start:end]) if start != -1 else {}
 
             company = self._find_best_match(data.get("company_name", ""), VALID_COMPANIES)
-            role = self._find_best_match(data.get("role", ""), VALID_ROLES)
+            years_of_experience = data.get("years_of_experience", "6-10")
+            # Normalize years_of_experience to standard buckets
+            if years_of_experience not in ("0-2", "3-5", "6-10", "10+"):
+                years_of_experience = "6-10"  # Default
             level = self._find_best_match(data.get("level", ""), VALID_LEVELS)
 
-            return {"company_name": company, "role": role, "level": level}
+            return {"company_name": company, "years_of_experience": years_of_experience, "level": level}
         except Exception as e:
             print(f"[AIService Error] {e}")
-            return {"company_name": "Unknown Company", "role": "PM", "level": "Strategic"}
+            return {"company_name": "Unknown Company", "years_of_experience": "6-10", "level": "Strategic"}
 
 ai_service = AIService()
 

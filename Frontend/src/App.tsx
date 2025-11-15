@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import LoginSignup from './components/LoginSignup';
+import RegionSelect from './components/RegionSelect';
 import Onboarding from './components/Onboarding';
 import InterviewSetup from './components/InterviewSetup';
 import InterviewFlow from './components/InterviewFlow';
 import Dashboard from './components/Dashboard';
+import LeaderboardPage from './components/LeaderboardPage';
 import { User, InterviewType, Answer, InterviewResult, SkillScore, Question } from './types';
 import { mockSkillScores, mockPeerComparison } from './data/mockData';
 import { calculateSkillScore, generateFeedback, calculatePercentile } from './utils/scoring';
 
-type AppStep = 'login' | 'onboarding' | 'setup' | 'interview' | 'results';
+type AppStep = 'login' | 'region-select' | 'onboarding' | 'setup' | 'interview' | 'results' | 'leaderboard';
 
 const API_BASE = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -81,10 +83,37 @@ function App() {
     }
   }, []);
 
-  // ✅ Always go to onboarding after login
+  // ✅ Always go to region selection after login
   const handleLoginSuccess = (userData: User) => {
     setUser(userData);
-    setCurrentStep('onboarding');
+    setCurrentStep('region-select');
+  };
+
+  const handleRegionSelect = async (updatedUserData: User) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setCurrentStep('login');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/auth/me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          region: updatedUserData.region,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to update region.');
+
+      const updatedUser = await response.json();
+      setUser(updatedUser);
+      setCurrentStep('onboarding');
+    } catch (error) {
+      console.error('Region selection failed:', error);
+    }
   };
 
   const handleOnboardingComplete = async (updatedUserData: User) => {
@@ -220,13 +249,42 @@ function App() {
             };
           });
 
+          // Fetch peer comparison data from backend
+          let peerComparison = mockPeerComparison;
+          try {
+            const rankingResp = await fetch(`${API_BASE}/api/interview/my-ranking`, {
+              headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            });
+            if (rankingResp.ok) {
+              const rankingData = await rankingResp.json();
+              // Map backend response to peerComparison structure with separate percentiles
+              peerComparison = {
+                region: {
+                  average: rankingData.avgScore || 0,
+                  percentile: rankingData.regionalPercentile || 0,
+                },
+                experience: {
+                  average: rankingData.avgScore || 0,
+                  percentile: rankingData.experiencePercentile || 0,
+                },
+                overall: {
+                  average: rankingData.avgScore || 0,
+                  percentile: rankingData.percentileRank || 0,
+                  totalCandidates: rankingData.totalCandidates || 0,
+                },
+              };
+            }
+          } catch (err) {
+            console.error('Failed to fetch peer comparison:', err);
+          }
+
           const result: InterviewResult = {
             sessionId: sessionId || new Date().toISOString(),
             overallScore: Math.round(overallScore),
             skillScores,
             strengths: skillScores.filter((s) => s.score > 85).map((s) => s.skill),
             improvements: skillScores.filter((s) => s.score < 75).map((s) => s.skill),
-            peerComparison: mockPeerComparison,
+            peerComparison,
             detailedFeedback: `Overall Performance: ${Math.round(overallScore)}/100. ${skillScores.map(s => `${s.skill}: ${s.score}/100`).join('. ')}`,
             perQuestionEvaluations: questionDetails,
           };
@@ -442,10 +500,27 @@ function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    try {
+      // Clear all auth tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_id');
+      localStorage.removeItem('session_id');
+    } catch (e) {
+      console.error('Error clearing localStorage:', e);
+    }
+    
+    // Reset all state
     setUser(null);
+    setInterviewResult(null);
+    setSelectedInterviewType(null);
+    setInterviewQuestions([]);
     setCurrentStep('login');
+    
+    // Force a page reload to clear all session data
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 50);
   };
 
   if (isLoading) {
@@ -463,6 +538,12 @@ function App() {
     switch (currentStep) {
       case 'login':
         return <LoginSignup onComplete={handleLoginSuccess} />;
+      case 'region-select':
+        return user ? (
+          <RegionSelect user={user} onComplete={handleRegionSelect} />
+        ) : (
+          <LoginSignup onComplete={handleLoginSuccess} />
+        );
       case 'onboarding':
         return user ? (
           <Onboarding user={user} onComplete={handleOnboardingComplete} />
@@ -494,6 +575,12 @@ function App() {
           />
         ) : (
           <InterviewSetup user={user!} onStartInterview={handleInterviewStart} />
+        );
+      case 'leaderboard':
+        return user ? (
+          <LeaderboardPage onClose={() => setCurrentStep('setup')} />
+        ) : (
+          <LoginSignup onComplete={handleLoginSuccess} />
         );
       default:
         return <LoginSignup onComplete={handleLoginSuccess} />;

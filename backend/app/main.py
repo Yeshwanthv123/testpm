@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from app.routers import auth, oauth, stubs, interview
+from app.routers import auth, oauth, stubs, interview, leaderboard
 from app.config import settings
 
 app = FastAPI()
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth")
 app.include_router(oauth.router, prefix="")
 app.include_router(stubs.router)
+app.include_router(leaderboard.router, prefix="/api")
 
 # IMPORTANT: mount interview under /api so the frontend path /api/interview/questions works
 app.include_router(interview.router, prefix="/api")

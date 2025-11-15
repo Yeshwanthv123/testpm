@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Users, Target, Zap } from 'lucide-react';
-import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
+import React, { useState, useEffect } from 'react';
+import { Users, Target, Zap, Download, Share2, User } from 'lucide-react';
+import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 import { InterviewResult } from '../types';
 import { detailedInsights } from '../data/mockData';
+import { downloadInterviewResults } from '../utils/downloadResults';
+import { copyShareLink } from '../utils/shareResults';
 
 interface DashboardProps {
   result: InterviewResult;
@@ -11,9 +13,35 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'skills' | 'insights' | 'comparison'>('overview');
+  const [userProfilePicture, setUserProfilePicture] = useState<string | null>(null);
+
+  // Fetch user profile picture
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+        
+        const response = await fetch('http://localhost:8000/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+          const userData = await response.json();
+          if (userData.profile_picture) {
+            setUserProfilePicture(userData.profile_picture);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch profile picture:', err);
+      }
+    };
+    
+    fetchUserProfile();
+  }, []);
 
   const skillScores = result.skillScores || [];
-  const overallScore = Math.round(skillScores.reduce((s, k) => s + (k.score || 0), 0) / Math.max(1, skillScores.length));
+  const overallScore = result.overallScore || Math.round(skillScores.reduce((s, k) => s + (k.score || 0), 0) / Math.max(1, skillScores.length));
 
   const radarData = skillScores.map(s => ({ skill: s.skill, score: s.score, industry: s.industryAverage || 75 }));
   const barData = skillScores.map(s => ({ name: s.skill, score: s.score, industry: s.industryAverage || 75 }));
@@ -68,10 +96,10 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
                   <div className="font-bold">{result.skillScores.filter(s => s.score >= 85).length}</div>
                   <div className="text-sm text-green-700">Skills Mastered</div>
                 </div>
-                <div className="text-center p-4 bg-blue-50 rounded-xl">
+              <div className="text-center p-4 bg-blue-50 rounded-xl">
                   <Users className="mx-auto mb-2" />
                   <div className="font-bold">{result.peerComparison.overall.percentile}%</div>
-                  <div className="text-sm text-blue-700">Better than peers</div>
+                  <div className="text-sm text-blue-700">Better than global peers</div>
                 </div>
                 <div className="text-center p-4 bg-purple-50 rounded-xl">
                   <Target className="mx-auto mb-2" />
@@ -117,10 +145,19 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                      <Pie data={safePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false}>
-                        {safePieData.map((p,i)=>(<Cell key={i} fill={p.color || '#ccc'}/>))}
-                      </Pie>
-                    <Tooltip/>
+                    <Pie 
+                      data={safePieData} 
+                      dataKey="value" 
+                      nameKey="name" 
+                      cx="50%" 
+                      cy="40%" 
+                      outerRadius={70}
+                      label={false}
+                    >
+                      {safePieData.map((p,i)=>(<Cell key={i} fill={p.color || '#ccc'}/>))}
+                    </Pie>
+                    <Tooltip formatter={(value) => value.toString()} />
+                    <Legend verticalAlign="bottom" height={40} wrapperStyle={{paddingTop: '20px'}} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -192,19 +229,51 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
         {activeTab==='comparison' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h3 className="text-xl font-bold mb-4">Peer Comparison</h3>
+              <h3 className="text-xl font-bold mb-6">Peer Comparison - Leaderboard Standing</h3>
               <div className="space-y-4">
-                <div className="p-4 bg-gray-50 rounded-lg flex justify-between"><div>Regional</div><div>{result.peerComparison.region.percentile}%</div></div>
-                <div className="p-4 bg-gray-50 rounded-lg flex justify-between"><div>Experience</div><div>{result.peerComparison.experience.percentile}%</div></div>
-                <div className="p-4 bg-blue-50 rounded-lg flex justify-between"><div>Overall</div><div>{result.peerComparison.overall.percentile}%</div></div>
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="font-semibold text-blue-900">Regional</div>
+                    <div className="text-2xl font-bold text-blue-600">{result.peerComparison.region.percentile}%</div>
+                  </div>
+                  <p className="text-sm text-blue-700">Better than regional peers on leaderboard</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="font-semibold text-purple-900">Experience Level</div>
+                    <div className="text-2xl font-bold text-purple-600">{result.peerComparison.experience.percentile}%</div>
+                  </div>
+                  <p className="text-sm text-purple-700">Better than peers with similar experience</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="font-semibold text-green-900">Global Leaderboard</div>
+                    <div className="text-2xl font-bold text-green-600">{result.peerComparison.overall.percentile}%</div>
+                  </div>
+                  <p className="text-sm text-green-700">Better than all global peers on leaderboard</p>
+                </div>
               </div>
             </div>
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <h3 className="text-xl font-bold mb-4">Next Steps</h3>
               <div className="space-y-4">
-                <button onClick={onRetakeInterview} className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl">Retake Interview</button>
-                <button className="w-full px-6 py-3 border rounded-xl">Download Detailed Report</button>
-                <button className="w-full px-6 py-3 border rounded-xl">Share Results</button>
+                <button onClick={onRetakeInterview} className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:shadow-lg transition">Retake Interview</button>
+                <button 
+                  onClick={() => downloadInterviewResults(result, 'interview-report.html')}
+                  className="w-full px-6 py-3 border border-blue-500 text-blue-600 rounded-xl hover:bg-blue-50 transition flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Report
+                </button>
+                <div className="border-t pt-4">
+                  <button 
+                    onClick={() => copyShareLink(result)}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm flex items-center justify-center gap-2"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    Copy Link
+                  </button>
+                </div>
               </div>
             </div>
           </div>
