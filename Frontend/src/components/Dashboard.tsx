@@ -14,8 +14,9 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'skills' | 'insights' | 'comparison'>('overview');
   const [userProfilePicture, setUserProfilePicture] = useState<string | null>(null);
+  const [userData, setUserData] = useState<any>(null);
 
-  // Fetch user profile picture
+  // Fetch user profile and metadata
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
@@ -28,12 +29,13 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
         
         if (response.ok) {
           const userData = await response.json();
+          setUserData(userData);
           if (userData.profile_picture) {
             setUserProfilePicture(userData.profile_picture);
           }
         }
       } catch (err) {
-        console.error('Failed to fetch profile picture:', err);
+        console.error('Failed to fetch profile:', err);
       }
     };
     
@@ -90,25 +92,37 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
             <div>
               <div className="text-6xl font-bold text-gray-900">{overallScore}</div>
               <div className="mt-2 text-gray-600">Overall Performance</div>
+              
+              {/* User Metadata Section */}
+              {userData && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                  <div className="space-y-2 text-sm">
+                    <div><strong>👤 Name:</strong> {userData.full_name || userData.email?.split('@')[0] || 'User'}</div>
+                    <div><strong>🌍 Region:</strong> {userData.region || 'Not specified'}</div>
+                    <div><strong>💼 Experience:</strong> {userData.experience || 'Not specified'}</div>
+                  </div>
+                </div>
+              )}
+              
               <div className="mt-4 grid grid-cols-3 gap-4">
                 <div className="text-center p-4 bg-green-50 rounded-xl">
                   <Zap className="mx-auto mb-2" />
                   <div className="font-bold">{result.skillScores.filter(s => s.score >= 85).length}</div>
                   <div className="text-sm text-green-700">Skills Mastered</div>
                 </div>
-              <div className="text-center p-4 bg-blue-50 rounded-xl">
+                <div className="text-center p-4 bg-blue-50 rounded-xl">
                   <Users className="mx-auto mb-2" />
                   <div className="font-bold">{result.peerComparison.overall.percentile}%</div>
                   <div className="text-sm text-blue-700">Better than global peers</div>
                 </div>
                 <div className="text-center p-4 bg-purple-50 rounded-xl">
                   <Target className="mx-auto mb-2" />
-                  <div className="font-bold">{Math.round((result.skillScores.reduce((sum, s) => sum + (s.percentile||0), 0) / Math.max(1, result.skillScores.length)))}</div>
-                  <div className="text-sm text-purple-700">Avg Percentile</div>
+                  <div className="font-bold">{result.improvementRate ? (result.improvementRate > 0 ? '+' : '') + Math.round(result.improvementRate) + '%' : 'N/A'}</div>
+                  <div className="text-sm text-purple-700">Improvement Rate</div>
                 </div>
               </div>
             </div>
-            <div className="h-72">
+            <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={radarData}>
                   <PolarGrid />
@@ -134,15 +148,22 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <h3 className="text-xl font-bold mb-4">Skills Performance vs Industry</h3>
-              <div className="h-64">
+              <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={barData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="score" fill="#3B82F6" /><Bar dataKey="industry" fill="#94A3B8" /></BarChart>
+                  <BarChart data={barData} margin={{ top: 20, right: 30, left: 0, bottom: 100 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="score" fill="#3B82F6" />
+                    <Bar dataKey="industry" fill="#94A3B8" />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <h3 className="text-xl font-bold mb-4">Performance Distribution</h3>
-              <div className="h-64">
+              <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie 
@@ -150,14 +171,14 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
                       dataKey="value" 
                       nameKey="name" 
                       cx="50%" 
-                      cy="40%" 
-                      outerRadius={70}
+                      cy="35%" 
+                      outerRadius={80}
                       label={false}
                     >
                       {safePieData.map((p,i)=>(<Cell key={i} fill={p.color || '#ccc'}/>))}
                     </Pie>
                     <Tooltip formatter={(value) => value.toString()} />
-                    <Legend verticalAlign="bottom" height={40} wrapperStyle={{paddingTop: '20px'}} />
+                    <Legend verticalAlign="bottom" height={36} wrapperStyle={{paddingTop: '20px'}} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -265,15 +286,6 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
                   <Download className="w-4 h-4" />
                   Download Report
                 </button>
-                <div className="border-t pt-4">
-                  <button 
-                    onClick={() => copyShareLink(result)}
-                    className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm flex items-center justify-center gap-2"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    Copy Link
-                  </button>
-                </div>
               </div>
             </div>
           </div>

@@ -78,13 +78,6 @@ const Profile: React.FC<ProfileProps> = ({ onClose, onViewResult, onNavigate }) 
     confirmPassword: ''
   });
 
-  const [notifications, setNotifications] = useState({
-    emailUpdates: true,
-    practiceReminders: true,
-    performanceReports: false,
-    newFeatures: true
-  });
-
   // Backend interview history
   const [recentInterviews, setRecentInterviews] = useState<any[]>([]);
 
@@ -765,40 +758,6 @@ const Profile: React.FC<ProfileProps> = ({ onClose, onViewResult, onNavigate }) 
                       </div>
                     </div>
                   )}
-                </div>
-
-                {/* Notifications */}
-                <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-                  <h3 className="text-xl font-bold text-gray-900 mb-6">Notification Preferences</h3>
-                  <div className="space-y-4">
-                    {Object.entries(notifications).map(([key, value]) => (
-                      <div key={key} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                        <div>
-                          <div className="font-medium text-gray-900">
-                            {key === 'emailUpdates' && 'Email Updates'}
-                            {key === 'practiceReminders' && 'Practice Reminders'}
-                            {key === 'performanceReports' && 'Performance Reports'}
-                            {key === 'newFeatures' && 'New Features'}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {key === 'emailUpdates' && 'Receive updates about your account and interviews'}
-                            {key === 'practiceReminders' && 'Get reminded to practice regularly'}
-                            {key === 'performanceReports' && 'Weekly performance summaries'}
-                            {key === 'newFeatures' && 'Be notified about new features and improvements'}
-                          </div>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={value}
-                            onChange={(e) => setNotifications(prev => ({ ...prev, [key]: e.target.checked }))}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}

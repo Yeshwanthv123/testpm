@@ -219,11 +219,50 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
       const timer = setTimeout(() => setTimeRemaining((t) => t - 1), 1000);
       return () => clearTimeout(timer);
     }
-  }, [timeRemaining]);
+  }, [timeRemaining, stopTimer]);
 
   useEffect(() => {
-    if (voiceState.transcript) setCurrentAnswer(voiceState.transcript);
-  }, [voiceState.transcript]);
+    // Sync voice transcript to answer field whenever recording is active
+    if (voiceState.isRecording) {
+      setCurrentAnswer(voiceState.transcript);
+    }
+  }, [voiceState.transcript, voiceState.isRecording]);
+
+  // Auto-advance when timer reaches 0
+  useEffect(() => {
+    if (timeRemaining === 0 && !stopTimer && currentQuestion && currentQuestionIndex < questions.length) {
+      const autoAdvanceTimer = setTimeout(() => {
+        const answer: Answer = {
+          questionId: currentQuestion.id,
+          answer: currentAnswer || '(No answer - Time expired)',
+          timeSpent: currentQuestion.timeLimit,
+          timestamp: new Date(),
+          isVoiceAnswer: voiceState.transcript.length > 0,
+        };
+
+        const newAnswers = [...answers, answer];
+        setAnswers(newAnswers);
+
+        if (currentQuestionIndex < questions.length - 1) {
+          // Move to next question sequentially (not skipping)
+          setIsTransitioning(true);
+          setTimeout(() => {
+            setCurrentQuestionIndex(currentQuestionIndex + 1);
+            setCurrentAnswer('');
+            clearTranscript();
+            setIsTransitioning(false);
+            setStopTimer(false); // Reset timer for next question
+          }, 500);
+        } else {
+          // Last question timed out - show results
+          setStopTimer(true);
+          onComplete(newAnswers);
+        }
+      }, 100);
+      
+      return () => clearTimeout(autoAdvanceTimer);
+    }
+  }, [timeRemaining, stopTimer, currentQuestion, currentQuestionIndex, questions.length, answers, voiceState.transcript, onComplete, clearTranscript, currentAnswer]);
 
   const handlePlayQuestion = () => {
     if (!currentQuestion) return;
@@ -348,23 +387,23 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <img 
-                src={getCompanyLogo(interviewType.name)} 
-                alt={interviewType.name}
-                className="w-12 h-12 rounded-lg object-cover"
+                src={getCompanyLogo(interviewType.company || interviewType.name)} 
+                alt={interviewType.company || interviewType.name}
+                className="w-12 h-12 rounded-lg object-cover bg-white border border-gray-200"
                 onError={(e) => {
                   e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjNjU2NUY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxNiIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DPC90ZXh0Pjwvc3ZnPg==';
                 }}
               />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{interviewType.name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{interviewType.company || interviewType.name}</h1>
                 <p className="text-gray-600 text-sm">
-                  Question {currentQuestionIndex + 1} of {questions.length}
+                  {jobDescription ? 'Interview' : `Question ${currentQuestionIndex + 1} of ${questions.length}`}
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <div className={`text-2xl font-bold ${getTimeColor()}`}>{formatTime(timeRemaining)}</div>
-              <div className="text-sm text-gray-500">Time remaining</div>
+            <div className="text-right flex flex-col items-center space-y-1">
+              <div className={`text-3xl font-bold ${getTimeColor()}`}>{formatTime(timeRemaining)}</div>
+              <div className="text-xs text-gray-500 font-medium">Time Remaining</div>
             </div>
           </div>
           <div className="w-full bg-gray-200 h-2 rounded-full mt-4">
@@ -378,23 +417,30 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
         {/* Question */}
         <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">{currentQuestion.question}</h2>
-          <div className="bg-orange-50 rounded-lg p-4 border border-orange-200 mb-4">
-            <div className="flex space-x-2">
-              <Lightbulb className="w-5 h-5 text-orange-600" />
-              <p className="text-sm text-orange-800">
-                💡 Tip: {getTipForQuestionType(currentQuestion.type)}
-              </p>
-            </div>
-          </div>
           <div className="flex flex-wrap gap-2">
-            {currentQuestion.skills.map((s, i) => (
-              <span
-                key={i}
-                className="bg-orange-50 text-orange-700 text-sm px-3 py-1 rounded-full font-medium"
-              >
-                {s}
-              </span>
-            ))}
+            {currentQuestion.skills && currentQuestion.skills.length > 0 ? (
+              currentQuestion.skills.map((s, i) => (
+                <span
+                  key={i}
+                  className="bg-orange-50 text-orange-700 text-sm px-3 py-1 rounded-full font-medium"
+                >
+                  {s}
+                </span>
+              ))
+            ) : (
+              <>
+                {currentQuestion.category && (
+                  <span className="bg-blue-50 text-blue-700 text-sm px-3 py-1 rounded-full font-medium">
+                    {currentQuestion.category}
+                  </span>
+                )}
+                {currentQuestion.difficulty && (
+                  <span className="bg-purple-50 text-purple-700 text-sm px-3 py-1 rounded-full font-medium">
+                    {currentQuestion.difficulty}
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -426,14 +472,17 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
             value={currentAnswer}
             onChange={(e) => setCurrentAnswer(e.target.value)}
             placeholder="Start typing your answer..."
-            className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+            className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 font-mono text-sm"
           />
 
           <div className="flex justify-between items-center mt-4">
-            <span className="text-sm text-gray-500">
-              {currentAnswer.length} chars •{' '}
-              {currentAnswer.split(' ').filter((w) => w).length} words
-            </span>
+            <div className="flex gap-4 text-sm text-gray-500">
+              <span>{currentAnswer.length} chars</span>
+              <span>•</span>
+              <span>{currentAnswer.split(' ').filter((w) => w).length} words</span>
+              <span>•</span>
+              <span>{Math.ceil(currentAnswer.length / 4)} tokens</span>
+            </div>
             <button
               onClick={handleNextQuestion}
               disabled={!currentAnswer.trim()}

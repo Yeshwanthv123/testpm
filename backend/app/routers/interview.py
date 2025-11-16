@@ -676,8 +676,8 @@ def get_interview_metrics(
     older_avg = (sum(older_scores) / len(older_scores)) if older_scores else 0
     
     # Calculate improvement rate
-    if len(older_scores) >= 3 and older_avg > 0:
-        # Need at least 3 older scores for meaningful comparison
+    if len(recent_scores) >= 3 and len(older_scores) >= 3 and older_avg > 0:
+        # Need at least 3 recent and 3 older scores for meaningful comparison
         raw_improvement = ((recent_avg - older_avg) / older_avg) * 100
         # Cap improvement rate to realistic range: -100% to +100%
         improvementRate = round(max(min(raw_improvement, 100), -100), 2)
@@ -705,7 +705,7 @@ def get_interview_metrics(
     
     all_avgs = [r[0] for r in all_user_avgs if r[0] is not None]
     if all_avgs:
-        better_than = sum(1 for a in all_avgs if avgScore > a)
+        better_than = sum(1 for a in all_avgs if avgScore >= a)
         percentileRank = round((better_than / len(all_avgs)) * 100, 2)
     else:
         percentileRank = 0
@@ -947,7 +947,7 @@ def get_my_ranking(
     ).group_by(Evaluation.user_id).all()
 
     all_avgs = [float(r.avg_score) for r in all_users_avg if r.avg_score]
-    global_better_than = sum(1 for a in all_avgs if avg_score > a)
+    global_better_than = sum(1 for a in all_avgs if avg_score >= a)
     percentile_rank = round((global_better_than / len(all_avgs)) * 100, 2) if all_avgs else 0
     total_candidates = len(all_avgs)
 
@@ -964,7 +964,7 @@ def get_my_ranking(
         ).group_by(Evaluation.user_id).all()
 
         regional_avgs = [float(r.avg_score) for r in regional_users_avg if r.avg_score]
-        regional_better_than = sum(1 for a in regional_avgs if avg_score > a)
+        regional_better_than = sum(1 for a in regional_avgs if avg_score >= a)
         regional_percentile = round((regional_better_than / len(regional_avgs)) * 100, 2) if regional_avgs else 0
         regional_candidates = len(regional_avgs)
 
@@ -980,7 +980,7 @@ def get_my_ranking(
         ).group_by(Evaluation.user_id).all()
 
         exp_avgs = [float(r.avg_score) for r in exp_users_avg if r.avg_score]
-        exp_better_than = sum(1 for a in exp_avgs if avg_score > a)
+        exp_better_than = sum(1 for a in exp_avgs if avg_score >= a)
         experience_percentile = round((exp_better_than / len(exp_avgs)) * 100, 2) if exp_avgs else 0
 
     return {

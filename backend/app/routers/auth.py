@@ -119,8 +119,11 @@ def register(payload: SignUpIn, db: Session = Depends(get_db)):
 @router.post("/login")
 def login(payload: SignUpIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
-    if not user or not user.hashed_password or user.hashed_password != _sha256(payload.password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user:
+        raise HTTPException(status_code=401, detail="This email is not registered. Please sign up first.")
+    
+    if not user.hashed_password or user.hashed_password != _sha256(payload.password):
+        raise HTTPException(status_code=401, detail="Invalid password")
 
     access = create_access_token(user.id, user.email)
     refresh = create_refresh_token(user.id, user.email)

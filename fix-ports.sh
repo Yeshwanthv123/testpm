@@ -23,37 +23,26 @@ echo ""
 for PORT in "${PORTS[@]}"; do
     echo "Checking port $PORT..."
     
-    # Find process using the port
+    # Try lsof first (works on macOS and Linux with proper permissions)
     if command -v lsof &> /dev/null; then
-        # Using lsof (preferred method)
-        PID=$(lsof -i :$PORT -t 2>/dev/null)
+        PID=$(lsof -i :$PORT -t 2>/dev/null | head -1)
         if [ -n "$PID" ]; then
             echo -e "${YELLOW}  Found process using port $PORT (PID: $PID)${RESET}"
             echo "  Killing process $PID..."
             kill -9 $PID 2>/dev/null
             if [ $? -eq 0 ]; then
                 echo -e "${GREEN}  [OK] Process killed${RESET}"
+                sleep 1
             else
                 echo -e "${RED}  [WARN] Could not kill process (may need sudo)${RESET}"
+                echo "  Try: sudo kill -9 $PID"
             fi
         else
             echo -e "${GREEN}  [OK] Port $PORT is free${RESET}"
         fi
     else
-        # Fallback to netstat
-        PID=$(netstat -tlnp 2>/dev/null | grep ":$PORT " | awk '{print $NF}' | cut -d'/' -f1)
-        if [ -n "$PID" ] && [ "$PID" != "-" ]; then
-            echo -e "${YELLOW}  Found process using port $PORT (PID: $PID)${RESET}"
-            echo "  Killing process $PID..."
-            kill -9 $PID 2>/dev/null
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}  [OK] Process killed${RESET}"
-            else
-                echo -e "${RED}  [WARN] Could not kill process (may need sudo)${RESET}"
-            fi
-        else
-            echo -e "${GREEN}  [OK] Port $PORT is free${RESET}"
-        fi
+        # Fallback for systems without lsof
+        echo -e "${YELLOW}  lsof not found, skipping port $PORT${RESET}"
     fi
 done
 

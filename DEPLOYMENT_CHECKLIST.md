@@ -200,6 +200,33 @@ OAUTH_REDIRECT_BASE=https://yourdomain.com
 DATABASE_URL=postgresql://prod_user:secure_password@db-host:5432/pmbot_prod
 ```
 
+## ✅ Recent Fixes (November 2025)
+
+The following issues have been fixed and are ready for fresh clone testing:
+
+### Code Changes
+- [x] Hourglass timer animation - now shows realistic sand falling
+- [x] Company logo display in JD mode - shows when using job description
+- [x] Category/complexity badges - displays when skills not available
+- [x] Experience level validation - prevents incomplete JD interviews
+- [x] Random questions fallback - works when no company mentioned
+
+### Configuration Needed
+- [ ] Google OAuth credentials (one-time setup via Google Cloud Console)
+  - Create project and OAuth 2.0 credentials
+  - Update `backend/.env` with actual Client ID and Secret
+  - See `OAUTH_SETUP_GUIDE.md` for detailed instructions
+
+### Testing Before Fresh Clone
+- [ ] Timer shows sand draining animation
+- [ ] Company logo visible in interview header
+- [ ] Questions display category/complexity badges
+- [ ] Cannot start JD interview without experience level set
+- [ ] Voice input button available
+- [ ] Google OAuth configured and working
+
+See `FIXES_COMPLETED.md` and `CODE_CHANGES_REFERENCE.md` for details.
+
 ## 📝 Intern Handoff Checklist
 
 When handing to intern:

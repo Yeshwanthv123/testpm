@@ -8,46 +8,53 @@ node_modules/
 dist/
 build/
 
-# Env files - EXCLUDE actual .env files but INCLUDE .env.example
+# ============================================
+# Environment & Secrets (DO NOT COMMIT)
+# ============================================
 .env
-*.env
+.env.local
+.env.*.local
 backend/.env
 Frontend/.env
-!backend/.env.example
-!Frontend/.env.example
-
-# OS/editor
-.DS_Store
-*.log
-
-# --- env & secrets ---
-.env
-*.env
-backend/.env
-Frontend/.env
+# BUT DO INCLUDE .env.example files as templates
 !backend/.env.example
 !Frontend/.env.example
 client_secret_*.json
 
-# --- python ---
+# ============================================
+# Python
+# ============================================
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
+env/
 
-# --- node ---
+# ============================================
+# Node.js
+# ============================================
 node_modules/
 dist/
+dist-ssr/
 build/
 .next/
 .turbo/
 .cache/
 
-# --- os/editor ---
+# ============================================
+# OS & Editor
+# ============================================
 .DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
 *.log
 *.swp
 *.swo
+*.swn
+*~
+.env~
 *~
 
 # IDE

@@ -64,6 +64,8 @@ export interface InterviewResult {
   improvements: string[];
   peerComparison: PeerComparison;
   detailedFeedback: string;
+  // Improvement rate: percent improvement from previous interviews
+  improvementRate?: number;
   // Optional detailed per-question AI evaluations returned by the backend
   perQuestionEvaluations?: Array<{
     question: Question | { [key: string]: any };
@@ -73,6 +75,16 @@ export interface InterviewResult {
     weaknesses?: string[];
     feedback?: string;
   }>;
+  // User metadata for download reports
+  username?: string;
+  region?: string;
+  experience?: string;
+  user?: {
+    full_name?: string;
+    email?: string;
+    region?: string;
+    experience?: string;
+  };
 }
 
 export interface PeerComparison {

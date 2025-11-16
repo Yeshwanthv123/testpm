@@ -284,11 +284,35 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
 
     return { company, role };
   }
+
+  // Helper function to get flag emoji for region
+  const getRegionFlag = (region: string): string => {
+    const flagMap: Record<string, string> = {
+      'US': '🇺🇸',
+      'EU': '🇬🇧',
+      'Asia Pacific': '🇮🇳',
+      'BR': '🇧🇷',
+      'Africa': '🇿🇦',
+      'AE': '🇸🇦',
+      'North America': '🇺🇸',
+      'Europe': '🇬🇧',
+      'South America': '🇧🇷',
+      'Middle East': '🇸🇦'
+    };
+    return flagMap[region] || '🌍';
+  };
+
   // Helper to proceed with JD: selects a sensible default interview type and
   // ensures the summary/start section is visible. This makes the "Proceed with JD"
   // button more reliable across environments.
   const handleProceedWithJD = async () => {
     if (!jobDescription.trim()) return;
+
+    // Validate experience level is set
+    if (!user.experience) {
+      alert('Please complete your onboarding to set your experience level before proceeding with a job description.');
+      return;
+    }
 
     setIsFetchingQuestions(true);
 
@@ -310,7 +334,11 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
   let questions = (apiResult as unknown) as Question[];
 
       // If we have no chosenType (edge case), pick a fallback
-      const startType = chosenType ?? interviewTypes[0];
+      const startType = {
+        ...(chosenType ?? interviewTypes[0]),
+        company: derivedCompany, // Set the extracted/selected company
+        name: derivedCompany === 'Generic' ? 'PM Interview' : derivedCompany
+      };
       onStartInterview(startType as any, questions, jobDescription);
 
       // Scroll to summary for UX (if rendered)
@@ -726,39 +754,6 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
                 <Users className="w-6 h-6 md:w-8 md:h-8 text-purple-600 mx-auto mb-3" />
                 <div className="font-bold text-lg md:text-xl text-purple-900">Peer</div>
                 <div className="text-xs md:text-sm text-purple-700">Comparison</div>
-              </div>
-            </div>
-
-            {/* Features List */}
-            <div className="bg-gradient-to-r from-orange-50 to-yellow-50 rounded-2xl p-4 md:p-6 mb-6 md:mb-8 border border-orange-200">
-              <h3 className="font-bold text-orange-900 mb-4 text-base md:text-lg">🚀 Interview Features:</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-                <div className="flex items-center space-x-2 text-orange-800">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                  <span className="text-xs md:text-sm">🎤 Voice-to-text for natural responses</span>
-                </div>
-                <div className="flex items-center space-x-2 text-orange-800">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                  <span className="text-xs md:text-sm">🔊 Audio question playback</span>
-                </div>
-                <div className="flex items-center space-x-2 text-orange-800">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                  <span className="text-xs md:text-sm">📊 Real-time progress tracking</span>
-                </div>
-                <div className="flex items-center space-x-2 text-orange-800">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                  <span className="text-xs md:text-sm">🧠 AI-powered evaluation and feedback</span>
-                </div>
-                <div className="flex items-center space-x-2 text-orange-800">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                  <span className="text-xs md:text-sm">📈 Detailed performance analytics</span>
-                </div>
-                {useJobDescription && jobDescription && (
-                  <div className="flex items-center space-x-2 text-orange-800">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                    <span className="text-xs md:text-sm">✨ Custom questions from job requirements</span>
-                  </div>
-                )}
               </div>
             </div>
 

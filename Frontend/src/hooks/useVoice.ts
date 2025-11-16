@@ -26,6 +26,7 @@ export const useVoice = () => {
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
+    recognitionRef.current.maxAlternatives = 1;
 
     recognitionRef.current.onstart = () => {
       setVoiceState(prev => ({ ...prev, isRecording: true }));
@@ -52,18 +53,12 @@ export const useVoice = () => {
       // Build the pending full transcript (final + interim)
       pendingTranscriptRef.current = (finalTranscriptRef.current || '') + interimTranscript;
 
-      // Debounce state updates to at most ~150ms to avoid frequent re-renders
-      if (updateTimerRef.current) {
-        window.clearTimeout(updateTimerRef.current as any);
-      }
-      updateTimerRef.current = window.setTimeout(() => {
-        setVoiceState(prev => ({
-          ...prev,
-          transcript: pendingTranscriptRef.current,
-          confidence: event.results[event.results.length - 1][0].confidence || 0
-        }));
-        updateTimerRef.current = null;
-      }, 150);
+      // Update state immediately with transcript for real-time display
+      setVoiceState(prev => ({
+        ...prev,
+        transcript: pendingTranscriptRef.current,
+        confidence: event.results[event.results.length - 1][0].confidence || 0
+      }));
     };
 
   recognitionRef.current.onerror = (event: any) => {
@@ -72,7 +67,17 @@ export const useVoice = () => {
     };
 
     recognitionRef.current.onend = () => {
-      setVoiceState(prev => ({ ...prev, isRecording: false }));
+      // Don't automatically set isRecording to false on silence
+      // Only stop if explicitly told to stop
+      if (recognitionRef.current && !recognitionRef.current.shouldStop) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.log('Already started or error restarting recognition');
+        }
+      } else {
+        setVoiceState(prev => ({ ...prev, isRecording: false }));
+      }
     };
 
     recognitionRef.current.start();
@@ -80,8 +85,10 @@ export const useVoice = () => {
 
   const stopRecording = useCallback(() => {
     if (recognitionRef.current) {
+      recognitionRef.current.shouldStop = true;
       recognitionRef.current.stop();
     }
+    setVoiceState(prev => ({ ...prev, isRecording: false }));
   }, []);
 
   const speakText = useCallback((text: string) => {
