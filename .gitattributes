@@ -1,0 +1,36 @@
+# Git line ending normalization
+# Ensure shell scripts always use Unix line endings (LF)
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Python scripts should use Unix line endings
+*.py text eol=lf
+
+# Batch files use Windows line endings (CRLF)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Docker files use Unix line endings
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf
+
+# Configuration files
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+
+# Documentation
+*.md text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.csv text eol=lf

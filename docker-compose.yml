@@ -50,6 +50,13 @@ services:
     entrypoint: ["sh","-c","dos2unix /backend/docker-entrypoint.sh 2>/dev/null || true; chmod +x /backend/docker-entrypoint.sh 2>/dev/null || true; /backend/docker-entrypoint.sh"]
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: on-failure
     depends_on:
       db:
         condition: service_healthy
@@ -71,6 +78,13 @@ services:
     # If you'd rather use 5173 update the Frontend Dockerfile CMD to use --port 5173 instead.
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: on-failure
     depends_on:
       - pmbot-backend
     networks:
@@ -87,6 +101,13 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       # Fallback models (not used if OLLAMA_URL is reachable)
       LLM_MODEL: qwen2:7b-instruct
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: on-failure
     networks:
       - pmbot-net
 

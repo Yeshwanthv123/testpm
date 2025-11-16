@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     PM_QUESTIONS_CSV: str | None = None
 
     class Config:
-        # Prefer the mounted /app/.env (docker-compose mounts backend to /app)
-        env_file = "/app/.env" if os.path.exists("/app/.env") else ".env"
+        # Prefer the mounted /backend/.env (docker-compose mounts backend to /backend)
+        env_file = "/backend/.env" if os.path.exists("/backend/.env") else ".env"
         case_sensitive = False
         extra = "ignore"  # ✅ allow future envs without crashing
 
