@@ -1,6 +1,8 @@
 @echo off
 REM Simple startup wrapper for team leads/managers
-REM Just tell them to run: run.bat
+REM Run from cmd.exe or PowerShell with: run.bat or .\run.bat
+
+setlocal enabledelayedexpansion
 
 cls
 
@@ -25,18 +27,6 @@ if errorlevel 1 (
 echo OK: Docker is installed
 echo.
 
-REM Check Python
-echo Checking Python...
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Python not found
-    echo Please install Python from https://www.python.org
-    pause
-    exit /b 1
-)
-echo OK: Python is installed
-echo.
-
 REM Check Docker running
 echo Checking if Docker is running...
 docker ps >nul 2>&1
@@ -53,7 +43,5 @@ REM Start main script
 echo Starting PMBOT...
 echo.
 
-call start_pmbot.bat
-if errorlevel 1 exit /b 1
-
-exit /b 0
+call "%~dp0start_pmbot.bat"
+exit /b %errorlevel%
