@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Clock, Users, Target, Chrome, Package, Building2, ArrowRight, Star, Smartphone, Play, Car, FileText, Sparkles, Upload, Search, X, Loader2 } from 'lucide-react';
 import { InterviewType, Question, User } from '../types';
 import { interviewTypes } from '../data/mockData';
-import { fetchInterviewQuestions } from '../utils/api';
+import { fetchInterviewQuestions, startInterviewWithJD } from '../utils/api';
 
 interface InterviewSetupProps {
   user: User;
@@ -358,25 +358,18 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
     setUseJobDescription(true);
 
     try {
-      // Extract company and experience from the pasted JD
-      const { company: extractedCompany, experience: extractedExp } = extractCompanyAndRole(jobDescription);
-      
-      // Use extracted experience level if available, otherwise use user's experience
-      const experienceToUse = extractedExp || user.experience;
-      const derivedCompany = extractedCompany || selectedCompany || 'Generic';
+      // Use the AI-powered JD endpoint which extracts company and experience from the JD
+      const apiResult = await startInterviewWithJD(jobDescription, {});
+      let questions = (apiResult as unknown) as Question[];
 
-      const apiResult = await fetchInterviewQuestions({
-        company: derivedCompany,
-        experience: experienceToUse,
-      });
-
-  let questions = (apiResult as unknown) as Question[];
+      // Extract company from first question (which has the _interview_metadata)
+      const companyFromQuestions = questions?.[0]?.company || questions?.[0]?._interview_metadata?.company_name || 'General Product Management';
 
       // If we have no chosenType (edge case), pick a fallback
       const startType = {
         ...(chosenType ?? interviewTypes[0]),
-        company: derivedCompany, // Set the extracted/selected company
-        name: derivedCompany === 'Generic' ? `PM Interview - ${experienceToUse} exp` : derivedCompany
+        company: companyFromQuestions, // Set from AI extraction
+        name: companyFromQuestions
       };
       onStartInterview(startType as any, questions, jobDescription);
 
@@ -493,15 +486,8 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
       let questions: Question[] = [];
 
       if (useJobDescription && jobDescription.trim()) {
-        // JD-aware logic: extract company but use user's experience level for filtering
-        const { company: extractedCompany } = extractCompanyAndRole(jobDescription);
-        const derivedCompany = extractedCompany || selectedCompany || "Generic";
-
-        const apiResult = await fetchInterviewQuestions({
-          company: derivedCompany,
-          experience: user.experience,
-        });
-
+        // Use the AI-powered JD endpoint which extracts company and experience from the JD
+        const apiResult = await startInterviewWithJD(jobDescription, {});
         questions = (apiResult as unknown) as Question[];
       } else {
         // Original fallback path: use selected company and user's experience level
@@ -703,10 +689,9 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
                 <label className="text-sm font-medium text-gray-700">Job Description</label>
                 {(() => {
                   const wordCount = jobDescription.split(/\s+/).filter(w => w.length > 0).length;
-                  const isExceeded = wordCount > 200;
                   return (
-                    <span className={`text-xs ${isExceeded ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                      {wordCount} / 200 words
+                    <span className="text-xs text-gray-500">
+                      {wordCount} words
                     </span>
                   );
                 })()}
@@ -715,20 +700,9 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value.slice(0, 2000))}
                 placeholder="Paste your JD here, or drag & drop a file…"
-                className={(() => {
-                  const wordCount = jobDescription.split(/\s+/).filter(w => w.length > 0).length;
-                  const isExceeded = wordCount > 200;
-                  const baseClass = 'w-full h-32 md:h-48 p-4 border rounded-xl focus:ring-2 focus:border-transparent resize-none text-gray-900 placeholder-gray-500 text-sm md:text-base';
-                  const stateClass = isExceeded ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-purple-500';
-                  return `${baseClass} ${stateClass}`;
-                })()}
+                className="w-full h-32 md:h-48 p-4 border rounded-xl focus:ring-2 focus:border-transparent resize-none text-gray-900 placeholder-gray-500 text-sm md:text-base border-gray-300 focus:ring-purple-500"
               />
-              {(() => {
-                const wordCount = jobDescription.split(/\s+/).filter(w => w.length > 0).length;
-                return wordCount > 200 ? (
-                  <p className="text-xs text-red-600 mt-2">⚠️ Job description should be 200 words or less for optimal AI processing (current: {wordCount} words)</p>
-                ) : null;
-              })()}
+              {/* Word limit warning removed - no limit needed */}
             </div>
 
             {/* AI Enhancement Info */}
@@ -785,40 +759,17 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
                     Ready to start your Product Management interview?
                   </h2>
                   {useJobDescription && jobDescription && (
-                    <div className="mb-4 space-y-2">
-                      {extractCompanyAndRole(jobDescription).company && (
-                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <p className="text-sm font-semibold text-blue-900">
-                            🏢 Company: <span className="text-lg text-blue-600">{extractCompanyAndRole(jobDescription).company}</span>
-                          </p>
-                        </div>
-                      )}
-                      {extractCompanyAndRole(jobDescription).experience && (
-                        <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                          <p className="text-sm font-semibold text-purple-900">
-                            📊 Experience Level: <span className="text-lg text-purple-600">{extractCompanyAndRole(jobDescription).experience} years</span>
-                          </p>
-                        </div>
-                      )}
-                      {!extractCompanyAndRole(jobDescription).company && !extractCompanyAndRole(jobDescription).experience && (
-                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                          <p className="text-sm text-amber-800">⚠️ Could not extract company or experience level from JD. Using your profile settings.</p>
-                        </div>
-                      )}
+                    <div className="flex items-center space-x-2 mb-4">
+                      <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
+                      <span className="text-purple-700 font-medium text-sm md:text-base">
+                        AI will extract company and experience from your job description
+                      </span>
                     </div>
                   )}
                 </div>
                 <p className="text-base md:text-lg text-gray-600 mb-4">
                   This interview will take approximately {selectedType.duration} minutes and cover {selectedType.questionCount} questions.
                 </p>
-                {useJobDescription && jobDescription && (
-                  <div className="flex items-center space-x-2 mb-4">
-                    <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
-                    <span className="text-purple-700 font-medium text-sm md:text-base">
-                      Enhanced with AI-generated questions from your job description
-                    </span>
-                  </div>
-                )}
               </div>
               <div className="flex-shrink-0 lg:ml-8 flex justify-center lg:justify-end">
                 <div className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-r ${selectedType.color} flex items-center justify-center shadow-lg`}>

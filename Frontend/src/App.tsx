@@ -159,6 +159,18 @@ function App() {
       sessionStorage.setItem('pmbot_questions', JSON.stringify(questions));
       // Persist selected interview type so a "Retake" can restore the same config
       try { sessionStorage.setItem('pmbot_selected_type', JSON.stringify(interviewType)); } catch {}
+      // Store interview metadata (company, years, level) from first question if available
+      try {
+        const firstQuestion = questions[0] as any;
+        if (firstQuestion && firstQuestion._interview_metadata) {
+          sessionStorage.setItem('pmbot_interview_metadata', JSON.stringify(firstQuestion._interview_metadata));
+          console.log('[handleInterviewStart] Stored interview metadata:', firstQuestion._interview_metadata);
+        } else {
+          console.log('[handleInterviewStart] First question has no _interview_metadata');
+        }
+      } catch (e) {
+        console.error('[handleInterviewStart] Failed to store metadata:', e);
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__PMBOT_QUESTIONS = questions;
     } catch {
@@ -200,6 +212,29 @@ function App() {
           return { question: q || {}, user_answer: a.answer };
         });
 
+        // Extract interview metadata from sessionStorage or first question
+        let interviewMetadata = null;
+        try {
+          const stored = sessionStorage.getItem('pmbot_interview_metadata');
+          if (stored) {
+            interviewMetadata = JSON.parse(stored);
+            console.log('[handleInterviewComplete] Retrieved interview metadata from storage:', interviewMetadata);
+          } else {
+            console.log('[handleInterviewComplete] No interview metadata in sessionStorage');
+          }
+        } catch (e) {
+          console.error('[handleInterviewComplete] Failed to retrieve metadata from storage:', e);
+        }
+        
+        // Fallback: try to get from first question
+        if (!interviewMetadata && interviewQuestions.length > 0) {
+          const firstQuestion = interviewQuestions[0] as any;
+          if (firstQuestion._interview_metadata) {
+            interviewMetadata = firstQuestion._interview_metadata;
+            console.log('[handleInterviewComplete] Retrieved interview metadata from first question:', interviewMetadata);
+          }
+        }
+
         const evalResp = await fetch(`${API_BASE}/api/interview/evaluate-answers`, {
           method: 'POST',
           headers: {
@@ -207,7 +242,7 @@ function App() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(sessionId ? { 'X-Session-Key': sessionId } : {}),
           },
-          body: JSON.stringify({ items: payloadItems }),
+          body: JSON.stringify({ items: payloadItems, interview_metadata: interviewMetadata }),
         });
 
         if (evalResp.ok) {
@@ -250,7 +285,7 @@ function App() {
               percentile: calculatePercentile(Math.round(avgScore), skill),
               feedback: `Scored ${Math.round(avgScore)}/100 on ${skill}`,
               trend: 'stable',
-              industryAverage: Math.floor(Math.random() * 15) + 70,
+              industryAverage: 75, // Use consistent industry average for graph consistency
             };
           });
 
@@ -337,7 +372,7 @@ function App() {
           percentile: calculatePercentile(score, skill),
           feedback: generateFeedback(score, skill),
           trend: 'stable',
-          industryAverage: Math.floor(Math.random() * 15) + 70,
+          industryAverage: 75, // Use consistent industry average for graph consistency
         };
       });
       const overallScore =
@@ -402,11 +437,22 @@ function App() {
               if (qs.length) {
                 try { sessionStorage.setItem('pmbot_questions', JSON.stringify(qs)); } catch {}
                 setInterviewQuestions(qs as any);
+                
+                // Calculate duration: use original interview duration if available
+                // Otherwise, preserve 3 minutes (180 seconds) per question as default
+                let retakeDuration = 30; // default 30 minutes
+                if (selectedInterviewType?.duration) {
+                  retakeDuration = selectedInterviewType.duration;
+                } else {
+                  // Fallback: 3 minutes per question (180 seconds per question)
+                  retakeDuration = Math.max(10, Math.ceil((qs.length * 180) / 60));
+                }
+                
                 setSelectedInterviewType({
                   id: 'retake',
                   name: 'Retake Interview',
                   description: 'Retake the selected past interview',
-                  duration: Math.max(10, Math.ceil((qs.length * 2) / 1)),
+                  duration: retakeDuration,
                   questionCount: qs.length,
                   skills: qs.flatMap((x:any) => x.skills || []),
                   icon: 'refresh',
@@ -501,7 +547,7 @@ function App() {
           percentile: Math.min(Math.round((roundedScore / 100) * 100), 95),
           feedback: `Scored ${roundedScore}/100 on ${skill}`,
           trend: 'stable' as const,
-          industryAverage: Math.floor(Math.random() * 15) + 70,
+          industryAverage: 75, // Use consistent industry average for graph consistency
         };
       });
 

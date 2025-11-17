@@ -149,6 +149,14 @@ def normalize_company(company: Optional[str]) -> Optional[str]:
     return c if c else None
 
 
+def company_exists_in_db(db: Session, company: str) -> bool:
+    """Check if a company exists in the question database."""
+    if not company:
+        return False
+    result = db.query(Question).filter(Question.company == company).first()
+    return result is not None
+
+
 # -------------- Brand sanitizer + skills --------------- #
 _BRAND_TOKENS = [
     "Google","Meta","Amazon","Microsoft","Apple","Netflix","Uber",
@@ -233,6 +241,7 @@ def _pick_questions(
     limit: int,
     session_key: Optional[str],
     no_repeat_days: int,
+    random_mode: bool = False,
 ) -> List[Dict[str, Any]]:
 
     wanted_company = normalize_company(company)
@@ -277,42 +286,69 @@ def _pick_questions(
     # Build a helper to add role filtering to any base query
     def add_role_filter(query):
         """Add experience_level filtering based on expected_role"""
-        if expected_role == "Senior PM":
-            # 6-10 years: exclude Principal/Director roles
-            return query.filter(not_(Question.experience_level.in_(["Principal PM", "Director", "Principal Product Manager"])))
+        if expected_role == "APM":
+            # 0-2 years: ONLY APM level, exclude PM/Senior PM/Principal
+            return query.filter(Question.experience_level == "APM")
+        elif expected_role == "PM":
+            # 3-5 years: ONLY PM level, exclude APM/Senior PM/Principal
+            return query.filter(Question.experience_level == "PM")
+        elif expected_role == "Senior PM":
+            # 6-10 years: ONLY Senior PM, exclude APM/PM/Principal/Director
+            return query.filter(Question.experience_level == "Senior PM")
         elif expected_role is None:
             # 10+ years: ONLY Principal/Director, exclude APM/PM/Senior PM
-            return query.filter(~Question.experience_level.in_(["APM", "PM", "Senior PM"]))
+            return query.filter(Question.experience_level.in_(["Principal PM", "Director", "Principal Product Manager"]))
         else:
-            # Other roles (APM, PM): no additional filtering needed for fallback
+            # Fallback: no additional filtering
             return query
 
-    # 1. Try to match both company and experience level (most specific)
-    if wanted_company and wanted_experience:
-        base_filter = and_(Question.company == wanted_company, Question.years_of_experience == wanted_experience)
-        query = db.query(Question).filter(base_filter)
-        query = add_role_filter(query)
+    # RANDOM MODE: Skip company matching, just get experience-filtered questions from random companies
+    # This is used when company from JD doesn't exist in our database
+    if random_mode:
+        if wanted_experience:
+            # Get questions matching the desired experience level from ANY company
+            # MUST apply role filter to only get correct seniority level
+            base_filter = Question.years_of_experience == wanted_experience
+            query = db.query(Question).filter(base_filter)
+            query = add_role_filter(query)  # Apply experience_level filter (APM/PM/Senior PM/Principal)
+            # Don't sanitize - keep original company names and text from CSV
+            remaining = add_from_query(query, sanitize_to=None, remaining=remaining)
         
-        remaining = add_from_query(query, sanitize_to=wanted_company, remaining=remaining)
+        # If still not enough questions, final fallback: get any questions with correct experience level
+        # but ignore role filtering if absolutely necessary
+        if remaining > 0 and wanted_experience:
+            # Try to get ANY questions with matching years_of_experience (if strict role filtering failed)
+            base_filter = Question.years_of_experience == wanted_experience
+            query = db.query(Question).filter(base_filter)
+            # Still apply role filter for consistency
+            query = add_role_filter(query)
+            remaining = add_from_query(query, sanitize_to=None, remaining=remaining)
+        
+        # Final fallback: get any questions if absolutely needed
+        if remaining > 0:
+            remaining = add_from_query(
+                db.query(Question),
+                sanitize_to=None, remaining=remaining)
+    else:
+        # NORMAL MODE: Company exists in database - ONLY get questions from that company
+        # NO fallback to other companies - stay within the matched company
 
-    # 2. Try company + any experience (company is important) - APPLY ROLE FILTER
-    if remaining > 0 and wanted_company:
-        query = db.query(Question).filter(Question.company == wanted_company)
-        query = add_role_filter(query)
-        remaining = add_from_query(query, sanitize_to=wanted_company, remaining=remaining)
+        # 1. Try to match both company and experience level (most specific)
+        if wanted_company and wanted_experience:
+            base_filter = and_(Question.company == wanted_company, Question.years_of_experience == wanted_experience)
+            query = db.query(Question).filter(base_filter)
+            query = add_role_filter(query)
+            
+            remaining = add_from_query(query, sanitize_to=wanted_company, remaining=remaining)
 
-    # 3. Try desired experience + generic/any company (experience is important) - APPLY ROLE FILTER
-    if remaining > 0 and wanted_experience:
-        base_filter = Question.years_of_experience == wanted_experience
-        query = db.query(Question).filter(base_filter)
-        query = add_role_filter(query)
-        remaining = add_from_query(query, sanitize_to=wanted_company or "Generic", remaining=remaining)
+        # 2. If not enough, try company + any experience (stay within same company)
+        if remaining > 0 and wanted_company:
+            query = db.query(Question).filter(Question.company == wanted_company)
+            query = add_role_filter(query)
+            remaining = add_from_query(query, sanitize_to=wanted_company, remaining=remaining)
 
-    # 4. If still not enough, get any questions
-    if remaining > 0:
-        remaining = add_from_query(
-            db.query(Question),
-            sanitize_to=wanted_company or "Generic", remaining=remaining)
+        # NOTE: We do NOT fetch from other companies or generic questions
+        # If we can't find 8 questions from the matched company, we return fewer questions
 
     if session_key and chosen_ids:
         bulk = [
@@ -368,17 +404,25 @@ def get_interview_questions(
     Fetch interview questions filtered by company and experience level.
     
     Args:
-        company: Optional company name (e.g., "Google", "Meta", "Generic")
+        company: Optional company name (e.g., "Google", "Meta", "Generic").
+                 If provided but not in database, will use random_mode to fetch
+                 random questions from any company matching the experience level.
         experience: Optional years of experience (e.g., "0-2", "2-4", "5-8", "8+")
         session: Session key for avoiding repeated questions
         no_repeat_days: Number of days to look back for previously served questions
     """
     try:
+        # Check if company is provided but doesn't exist in DB
+        use_random_mode = False
+        if company and not company_exists_in_db(db, company):
+            use_random_mode = True
+        
         data = _pick_questions(
             db, company, role=None, experience=experience,
             limit=TOTAL_QUESTIONS_TO_RETURN,
             session_key=session,
-            no_repeat_days=no_repeat_days
+            no_repeat_days=no_repeat_days,
+            random_mode=use_random_mode
         )
         if not data:
             raise HTTPException(status_code=404, detail="No questions available. Make sure your CSV is loaded.")
@@ -396,50 +440,65 @@ async def start_interview_with_jd(
     db: Session = Depends(get_db),
 ):
     """
-    1. Analyze a Job Description (JD) using local AI service.
-    2. Extract Company and Years of Experience.
-    3. Fetch matching questions from the question pool.
+    Process JD upload: extract company and experience level, then return questions.
+    
+    LOGIC:
+    1. AI extracts company name and experience level from JD
+    2. If company found in CSV: fetch questions ONLY from that company
+    3. If company NOT found: fetch RANDOM questions from multiple companies
+       → Use experience level only for filtering
+       → Each returned question has its own company field from CSV
+       → Frontend displays each question's company in the header
     """
     try:
-        print("[InterviewRouter] Sending JD to AI service...")
+        print("[InterviewRouter /start-with-jd] Processing JD upload...")
         ai_details = await ai_service.extract_details_from_jd(jd_upload.jd_text)
 
-        company = ai_details.get("company_name")
-        years_of_experience = ai_details.get("years_of_experience")  # e.g., "6-10"
-        level = ai_details.get("level")
+        extracted_company = ai_details.get("company_name", "Unknown Company")
+        years_of_experience = ai_details.get("years_of_experience", "6-10")
+        level = ai_details.get("level", "Strategic")
 
-        print(f"[InterviewRouter] AI extracted → Company={company}, YearsOfExperience={years_of_experience}, Level={level}")
+        print(f"[InterviewRouter] AI extracted: company='{extracted_company}', years='{years_of_experience}'")
 
+        # Decide: use normal mode (company found) or random mode (company not found)
+        company_exists = extracted_company != "Unknown Company" and company_exists_in_db(db, extracted_company)
+        use_random_mode = not company_exists
+        
+        print(f"[InterviewRouter] company_exists={company_exists}, use_random_mode={use_random_mode}")
+
+        # Fetch questions
         questions_list = _pick_questions(
             db,
-            company=company,
-            role=None,  # No longer using role
-            experience=years_of_experience,  # Use years_of_experience instead
+            company=extracted_company if company_exists else None,  # Pass company only if it exists
+            role=None,
+            experience=years_of_experience,
             limit=8,
             session_key=None,
             no_repeat_days=0,
+            random_mode=use_random_mode
         )
 
         if not questions_list:
-            raise HTTPException(status_code=404, detail="No questions found for extracted company/experience level.")
+            raise HTTPException(status_code=404, detail="No questions found for experience level.")
 
+        # Return the extracted company info - show actual company name even if not in database
         return {
             "status": "success",
             "data": {
                 "ai_extracted": {
-                    "company_name": company,
+                    "company_name": extracted_company,  # Return actual extracted company (not "Random Interview")
                     "years_of_experience": years_of_experience,
                     "level": level,
                 },
-                "questions": questions_list,
+                "questions": questions_list,  # Each question has its own 'company' field from CSV
             },
         }
 
     except HTTPException:
         raise
     except Exception as exc:
-        print(f"[InterviewRouter] Error in /start-with-jd: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to start interview from JD. ({type(exc).__name__})")
+        print(f"[InterviewRouter /start-with-jd] Error: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to start interview. ({type(exc).__name__})")
 
 
 # -------------- Evaluate user answers (generate model answers + compare) --------------- #
@@ -584,12 +643,25 @@ def evaluate_answers(
 
         overall = int(round((total_score / count))) if count > 0 else 0
 
+        # Extract company from payload if available (for JD-based interviews)
+        interview_company = None
+        if payload.interview_metadata and isinstance(payload.interview_metadata, dict):
+            interview_company = payload.interview_metadata.get("company_name")
+            print(f"[EvaluateAnswers] interview_metadata found, company_name='{interview_company}'")
+        else:
+            print(f"[EvaluateAnswers] No interview_metadata in payload, will try to extract from questions")
+
         # Persist evaluation to DB (best-effort)
         try:
             sess = x_session_key or session_key
             logger.info(f"Persisting evaluation: session={sess!r} type={type(sess)} user_id={(current_user.id if current_user else None)!r} overall={overall}")
+            print(f"[EvaluateAnswers] Storing evaluation with interview_company='{interview_company}'")
             
-            ev = Evaluation(session_id=str(sess) if sess is not None else None, user_id=(current_user.id if current_user else None), overall_score=overall, details={"per_question": results})
+            details = {
+                "per_question": results,
+                "interview_company": interview_company  # Store the extracted/interview company
+            }
+            ev = Evaluation(session_id=str(sess) if sess is not None else None, user_id=(current_user.id if current_user else None), overall_score=overall, details=details)
             # Log what's going into the database
             logger.debug(f"Evaluation object before save: {dict(inspect(ev).attrs.items())}")
             
@@ -726,12 +798,22 @@ def get_interview_metrics(
         category = "General"
         questions = []
         if ev.details and isinstance(ev.details, dict):
+            # First, try to use the stored interview company (for JD-based interviews)
+            stored_company = ev.details.get("interview_company")
+            if stored_company:
+                company = stored_company
+                print(f"[RecentInterviews] Using stored company: {company}")
+            else:
+                print(f"[RecentInterviews] No stored company found in evaluation {ev.id}, checking questions...")
+            
             per_q = ev.details.get("per_question") or []
             for q in per_q:
                 if isinstance(q, dict):
                     q_obj = q.get("question") or {}
                     if isinstance(q_obj, dict):
-                        company = q_obj.get("company") or company
+                        # Only override company if it wasn't already set from interview metadata
+                        if not stored_company:
+                            company = q_obj.get("company") or company
                         category = q_obj.get("category") or category
                     questions.append({
                         "id": str(q_obj.get("id")) if q_obj.get("id") is not None else None,

@@ -686,9 +686,8 @@ class AIService:
                         except Exception:
                             pass
 
-            # If LLM didn't return structured output, respect force_llm
-            if getattr(self, 'force_llm', False):
-                raise Exception('LLM did not return structured batch answers and LLM_FORCE is enabled')
+            # If LLM didn't return structured output, log warning and continue to fallback
+            print(f"[AIService generate_answers_batch] LLM did not return structured batch answers, using per-question fallback")
 
         except Exception as e:
             print(f"[AIService generate_answers_batch error] {e}")
@@ -964,52 +963,125 @@ class AIService:
 
     async def extract_details_from_jd(self, jd_text: str) -> dict:
         """
-        Extract company, years of experience, and level from JD.
+        Extract company and years of experience from JD.
         
-        Returns:
-        - If company found in CSV and years match: exact company questions
-        - If company not found: 8 random questions from multiple companies with matching years
-        - If years not found in JD: default to "6-10" and provide diverse questions
+        LOGIC:
+        1. If company is found in CSV: return that company + experience level
+        2. If company is NOT found: return "Unknown Company" + experience level
+           → Random mode will be triggered in the router
+           → Random mode returns 8 questions from DIFFERENT companies based on experience level
+           → Each question already has its own company field from CSV
         """
         try:
             full_prompt = SYSTEM_PROMPT + "\n\n" + jd_text
             raw = self._query_ollama(full_prompt)
+            
+            print(f"[AIService extract_details_from_jd] Raw LLM response: {raw[:300]}")
+            
+            # Parse JSON - strict validation
+            data = {}
             try:
                 data = json.loads(raw)
             except Exception:
+                # Try to find JSON in the response
                 start, end = raw.find("{"), raw.rfind("}") + 1
-                data = json.loads(raw[start:end]) if start != -1 else {}
-
-            # Extract and normalize company
-            company_name = data.get("company_name", "").strip()
-            extracted_company = self._find_best_match(company_name, VALID_COMPANIES)
+                if start != -1 and end > start:
+                    try:
+                        data = json.loads(raw[start:end])
+                    except Exception:
+                        pass
             
-            # Extract and normalize years of experience
-            years_of_experience = data.get("years_of_experience", "6-10").strip()
-            if years_of_experience not in ("0-2", "3-5", "6-10", "10+"):
-                years_of_experience = "6-10"  # Default
+            # Extract company_name - MUST validate strictly
+            raw_company = (data.get("company_name") or "").strip()
+            print(f"[AIService] Raw company from LLM: '{raw_company}' (len={len(raw_company)})")
             
-            # Extract and normalize level
-            level = self._find_best_match(data.get("level", ""), VALID_LEVELS)
-
-            # Determine if company was actually found in our database
-            company_found = extracted_company != "Unknown Company"
+            # VALIDATION: Reject if corrupted
+            extracted_company = "Unknown Company"
+            if raw_company and raw_company != "Unknown Company":
+                # Check for corruption indicators
+                is_corrupted = (
+                    len(raw_company) > 50 or  # Too long
+                    "\n" in raw_company or "\r" in raw_company or  # Contains newlines
+                    "experience" in raw_company.lower() or
+                    "location" in raw_company.lower() or
+                    "years" in raw_company.lower() or
+                    "level" in raw_company.lower()
+                )
+                
+                if is_corrupted:
+                    print(f"[AIService] REJECTED - Company name appears corrupted: {raw_company[:80]}")
+                    extracted_company = "Unknown Company"
+                else:
+                    # Use the extracted company name as-is (whether in CSV or not)
+                    # This allows displaying LinkedIn, Freshworks, etc. even if not in questions database
+                    extracted_company = raw_company
+                    print(f"[AIService] Using extracted company name: {extracted_company}")
+            
+            # Final fallback: scan JD text for company mentions
+            if extracted_company == "Unknown Company":
+                print(f"[AIService] Fallback: scanning JD text for company mentions...")
+                jd_lower = jd_text.lower()
+                
+                # First try to find any CSV company in the JD
+                for company in VALID_COMPANIES:
+                    if company.lower() in jd_lower:
+                        print(f"[AIService] Found CSV company '{company}' in JD text")
+                        extracted_company = company
+                        break
+                
+                # If still Unknown Company, look for common company name patterns in JD
+                if extracted_company == "Unknown Company":
+                    import re
+                    # Look for "Company: XyzCompany" or "company xyz" patterns
+                    patterns = [
+                        r'Company:\s*(\w+(?:\s+\w+)?)',
+                        r'company:\s*(\w+(?:\s+\w+)?)',
+                        r'(?:at|with)\s+(\w+(?:\s+\w+)?)\s*(?:,|\s+(?:is|has|with|for))',
+                    ]
+                    for pattern in patterns:
+                        matches = re.findall(pattern, jd_text, re.IGNORECASE)
+                        if matches:
+                            extracted_from_text = matches[0].strip()
+                            if extracted_from_text and len(extracted_from_text) < 50:
+                                print(f"[AIService] Extracted company name from JD text: '{extracted_from_text}'")
+                                extracted_company = extracted_from_text
+                                break
+            
+            # Extract experience level - MUST be valid
+            raw_years = (data.get("years_of_experience") or "6-10").strip()
+            print(f"[AIService] Raw years from LLM: '{raw_years}'")
+            
+            if raw_years not in ("0-2", "3-5", "6-10", "10+"):
+                print(f"[AIService] Invalid years '{raw_years}', defaulting to '6-10'")
+                raw_years = "6-10"
+            
+            years_of_experience = raw_years
+            
+            # Extract level (not critical for questions, just metadata)
+            level = data.get("level", "Strategic").strip()
+            if level not in VALID_LEVELS:
+                # Try to find closest match
+                level_lower = level.lower()
+                for vl in VALID_LEVELS:
+                    if vl.lower() == level_lower:
+                        level = vl
+                        break
+                else:
+                    level = "Strategic"
+            
+            print(f"[AIService] FINAL EXTRACTION: company='{extracted_company}', years='{years_of_experience}', level='{level}'")
             
             return {
                 "company_name": extracted_company,
                 "years_of_experience": years_of_experience,
                 "level": level,
-                "company_found": company_found,  # Flag to indicate if exact match exists
-                "original_company": company_name  # Store original for logging
             }
         except Exception as e:
-            print(f"[AIService extract_details_from_jd error] {e}")
+            print(f"[AIService extract_details_from_jd] ERROR: {e}")
             return {
                 "company_name": "Unknown Company",
                 "years_of_experience": "6-10",
                 "level": "Strategic",
-                "company_found": False,
-                "original_company": ""
             }
 
 ai_service = AIService()

@@ -136,6 +136,7 @@ class QuestionEvaluation(_FromORMMixin):
 
 class EvaluateRequest(_FromORMMixin):
     items: List[AnswerItem]
+    interview_metadata: Optional[dict] = None  # Store company, years, etc. from JD extraction
 
 
 class EvaluateResponse(_FromORMMixin):

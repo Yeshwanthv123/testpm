@@ -26,20 +26,21 @@ interface InterviewFlowProps {
 
 const DEFAULT_PER_QUESTION_SECONDS = 180;
 
-// Company logo URLs
+// Company logo URLs - Using multiple sources with fallbacks
 const COMPANY_LOGOS: Record<string, string> = {
   'Google': 'https://www.google.com/favicon.ico',
-  'Meta': 'https://www.facebook.com/favicon.ico',
+  'Meta': 'https://www.meta.com/favicon.ico',
   'Amazon': 'https://www.amazon.com/favicon.ico',
   'Apple': 'https://www.apple.com/favicon.ico',
   'Microsoft': 'https://www.microsoft.com/favicon.ico',
   'Netflix': 'https://www.netflix.com/favicon.ico',
-  'Tesla': 'https://www.tesla.com/favicon.ico',
-  'Twitter': 'https://www.twitter.com/favicon.ico',
-  'LinkedIn': 'https://www.linkedin.com/favicon.ico',
   'Uber': 'https://www.uber.com/favicon.ico',
+  'Airbnb': 'https://www.airbnb.com/favicon.ico',
+  'Stripe': 'https://www.stripe.com/favicon.ico',
+  'Salesforce': 'https://www.salesforce.com/favicon.ico',
+  'Freshworks': 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjMDAxQzMwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxNCIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5GVzwvdGV4dD48L3N2Zz4=',
   'Zoho': 'https://www.zoho.com/favicon.ico',
-  'Freshworks': 'https://www.freshworks.com/favicon.ico',
+  'Random Interview': 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjNjM2MyYiIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIyNCIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj8+P+KCojwvdGV4dD48L3N2Zz4=',
 };
 
 const getCompanyLogo = (company: string): string => {
@@ -49,7 +50,13 @@ const getCompanyLogo = (company: string): string => {
   
   // For Generic or Unknown companies, return a generic company placeholder SVG
   const companyInitial = (company?.charAt(0) || 'C').toUpperCase();
-  return `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjRkY5NTAwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxOCIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj4ke2NvbXBhbnlJbml0aWFsfTwvdGV4dD48L3N2Zz4=`;
+  // Use a colorful SVG placeholder that always works (no external dependency)
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#6C5CE7'];
+  const colorIndex = (company?.charCodeAt(0) || 0) % colors.length;
+  const bgColor = colors[colorIndex];
+  
+  const svg = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="8" fill="${bgColor}"/><text x="50%" y="50%" fontSize="16" fontWeight="bold" fill="white" textAnchor="middle" dy=".3em">${companyInitial}</text></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
 };
 
 function deriveSkills(category?: string, difficulty?: string): string[] {
@@ -135,6 +142,7 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
           question: qText.trim(),
           type: (item?.type as Question['type']) || 'behavioral',
           category: (item?.category as string) || 'General',
+          company: (item?.company as string) || undefined,
           timeLimit:
             typeof item?.timeLimit === 'number' && item.timeLimit > 0
               ? item.timeLimit
@@ -165,52 +173,17 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
     return null;
   }
 
-  const generateJobDescriptionQuestions = (jd: string, count: number): Question[] => {
-    const sec = perQuestionSeconds();
-    const mockJDQuestions: Question[] = [
-      {
-        id: 'jd1',
-        type: 'strategic',
-        category: 'Role-Specific',
-        question: `Based on the job requirements, how would you approach the key responsibilities mentioned in this role during your first 90 days?`,
-        timeLimit: sec,
-        difficulty: 'medium',
-        skills: ['Strategy', 'Planning', 'Execution'],
-      },
-      {
-        id: 'jd2',
-        type: 'behavioral',
-        category: 'Experience Match',
-        question: `Tell me about a time when you handled a situation similar to the challenges described in this job posting.`,
-        timeLimit: sec,
-        difficulty: 'medium',
-        skills: ['Experience', 'Problem Solving', 'Leadership'],
-      },
-    ];
-    return mockJDQuestions.slice(0, count);
-  };
-
   const questions: Question[] = useMemo(() => {
     const fromBackend = getInjectedQuestions();
 
+    // ONLY use questions from backend (loaded from CSV database)
+    // Do NOT mix in mock/template questions
     if (fromBackend && fromBackend.length) {
-      if (jobDescription) {
-        const firstHalf = Math.floor(interviewType.questionCount / 2);
-        const secondHalf = Math.max(0, interviewType.questionCount - firstHalf);
-        const jdQs = generateJobDescriptionQuestions(jobDescription, secondHalf);
-        const base = fromBackend.slice(0, firstHalf);
-        return [...base, ...jdQs];
-      }
       return fromBackend.slice(0, interviewType.questionCount);
     }
 
-    if (jobDescription) {
-      return [
-        ...sampleQuestions.slice(0, Math.floor(interviewType.questionCount / 2)),
-        ...generateJobDescriptionQuestions(jobDescription, Math.ceil(interviewType.questionCount / 2)),
-      ];
-    }
-    return sampleQuestions.slice(0, interviewType.questionCount);
+    // If no backend questions available, return empty (don't fall back to mock data)
+    return [];
   }, [interviewType, jobDescription]);
 
   const currentQuestion = questions[currentQuestionIndex];
@@ -393,15 +366,15 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <img 
-                src={getCompanyLogo(interviewType.company || interviewType.name)} 
-                alt={interviewType.company || interviewType.name}
+                src={getCompanyLogo(currentQuestion?.company || interviewType.company || interviewType.name)} 
+                alt={currentQuestion?.company || interviewType.company || interviewType.name}
                 className="w-12 h-12 rounded-lg object-cover bg-white border border-gray-200"
                 onError={(e) => {
                   e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjNjU2NUY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxNiIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DPC90ZXh0Pjwvc3ZnPg==';
                 }}
               />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{interviewType.company || interviewType.name}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{currentQuestion?.company || interviewType.company || interviewType.name}</h1>
                 <p className="text-gray-600 text-sm">
                   {jobDescription ? 'Interview' : `Question ${currentQuestionIndex + 1} of ${questions.length}`}
                 </p>

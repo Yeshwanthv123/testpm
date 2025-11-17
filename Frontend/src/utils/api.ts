@@ -305,11 +305,11 @@ export async function startInterviewWithJD(
   }
 
   try {
-    // The backend returns a SINGLE question object (or sometimes a wrapper like { data: { ... } }).
+    // The backend returns { status, data: { ai_extracted: {...}, questions: [...] } }
     const item = (await res.json()) as unknown;
 
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      throw new Error("Unexpected response shape: expected a single object");
+    if (typeof item !== "object" || item === null) {
+      throw new Error("Unexpected response shape: expected an object");
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -317,16 +317,40 @@ export async function startInterviewWithJD(
     // Support both direct object and wrapped responses { data: { ... } }
     const payload = anyItem?.data ?? anyItem;
 
-    // The question text may exist as 'question' or 'text', and in some shapes
-    // it could be nested; be permissive.
+    // Extract ai_extracted metadata (company name, years, level)
+    const aiMeta = payload?.ai_extracted ?? null;
+    const interviewCompany = aiMeta?.company_name ?? null;
+
+    // Handle array of questions (normal case for JD interviews)
+    const questionsArray = payload?.questions;
+    if (Array.isArray(questionsArray)) {
+      return questionsArray.map((q: any) => {
+        const qText = q?.question ?? q?.text ?? null;
+        return {
+          id: q?.id ?? null,
+          question: typeof qText === "string" ? qText : qText == null ? null : String(qText),
+          company: q?.company ?? interviewCompany ?? null,
+          category: q?.category ?? null,
+          complexity: q?.complexity ?? null,
+          experience_level: q?.experience_level ?? null,
+          years_of_experience: q?.years_of_experience ?? null,
+          skills: q?.skills ?? null,
+          // Store interview metadata on first question for later retrieval
+          _interview_metadata: {
+            company_name: interviewCompany,
+            years_of_experience: aiMeta?.years_of_experience,
+            level: aiMeta?.level,
+          },
+        } as any;
+      });
+    }
+
+    // Fallback: handle single question response
     const qText =
       payload?.question ??
       payload?.text ??
       (typeof payload?.question === 'object' ? payload?.question?.text : null) ??
       null;
-
-    // If the AI returns metadata under `ai_extracted`, prefer those fields
-    const aiMeta = payload?.ai_extracted ?? null;
 
     const mapped: QuestionDTO = {
       id: payload?.id ?? null,

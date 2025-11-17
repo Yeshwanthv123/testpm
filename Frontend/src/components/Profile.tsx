@@ -18,7 +18,7 @@ interface ProfileProps {
   onNavigate?: (step: string) => void;
 }
 
-// Company logo URLs
+// Company logo URLs - Updated to match CSV
 const COMPANY_LOGOS: Record<string, string> = {
   'Google': 'https://www.google.com/favicon.ico',
   'Meta': 'https://www.facebook.com/favicon.ico',
@@ -26,10 +26,12 @@ const COMPANY_LOGOS: Record<string, string> = {
   'Apple': 'https://www.apple.com/favicon.ico',
   'Microsoft': 'https://www.microsoft.com/favicon.ico',
   'Netflix': 'https://www.netflix.com/favicon.ico',
-  'Tesla': 'https://www.tesla.com/favicon.ico',
-  'Twitter': 'https://www.twitter.com/favicon.ico',
-  'LinkedIn': 'https://www.linkedin.com/favicon.ico',
   'Uber': 'https://www.uber.com/favicon.ico',
+  'Airbnb': 'https://www.airbnb.com/favicon.ico',
+  'Stripe': 'https://www.stripe.com/favicon.ico',
+  'Salesforce': 'https://www.salesforce.com/favicon.ico',
+  'Freshworks': 'https://www.freshworks.com/favicon.ico',
+  'Zoho': 'https://www.zoho.com/favicon.ico',
 };
 
 const getCompanyLogo = (company: string): string => {
