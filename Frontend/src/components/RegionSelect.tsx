@@ -10,13 +10,26 @@ interface RegionSelectProps {
 const RegionSelect: React.FC<RegionSelectProps> = ({ user, onComplete }) => {
   const [selectedRegion, setSelectedRegion] = useState<string>('');
 
+  // Create regional collage images with multiple country flags
+  const getRegionCollage = (code: string) => {
+    const collages: Record<string, string> = {
+      'US': '🇺🇸🇨🇦🇲🇽',      // USA, Canada, Mexico
+      'EU': '🇬🇧🇩🇪🇫🇷🇸🇪',     // UK, Germany, France, Sweden
+      'Asia Pacific': '🇮🇳🇨🇳🇯🇵🇦🇺', // India, China, Japan, Australia
+      'BR': '🇧🇷🇦🇷🇨🇱🇵🇪',     // Brazil, Argentina, Chile, Peru
+      'Africa': '🇿🇦🇳🇬🇰🇪🇪🇬',    // South Africa, Nigeria, Kenya, Egypt
+      'AE': '🇸🇦🇦🇪🇮🇱🇵🇰',      // Saudi Arabia, UAE, Israel, Pakistan
+    };
+    return collages[code] || '🌍';
+  };
+
   const regions = [
-    { code: 'US', name: 'North America', flag: '🇺🇸', countries: 'USA, Canada, Mexico' },
-    { code: 'EU', name: 'Europe', flag: '🇬🇧', countries: 'EU, UK, Switzerland, Norway' },
-    { code: 'Asia Pacific', name: 'Asia Pacific', flag: '🇮🇳', countries: 'India, China, Japan, Australia' },
-    { code: 'BR', name: 'South America', flag: '🇧🇷', countries: 'Brazil, Argentina, Chile' },
-    { code: 'Africa', name: 'Africa', flag: '🇿🇦', countries: 'South Africa, Nigeria, Kenya' },
-    { code: 'AE', name: 'Middle East', flag: '🇸🇦', countries: 'UAE, Saudi Arabia, Israel' }
+    { code: 'US', name: 'North America', countries: 'USA, Canada, Mexico' },
+    { code: 'EU', name: 'Europe', countries: 'UK, Germany, France, Sweden' },
+    { code: 'Asia Pacific', name: 'Asia Pacific', countries: 'India, China, Japan, Australia' },
+    { code: 'BR', name: 'South America', countries: 'Brazil, Argentina, Chile, Peru' },
+    { code: 'Africa', name: 'Africa', countries: 'South Africa, Nigeria, Kenya, Egypt' },
+    { code: 'AE', name: 'Middle East', countries: 'Saudi Arabia, UAE, Israel, Pakistan' }
   ];
 
   const handleRegionSelect = (regionCode: string) => {
@@ -71,7 +84,7 @@ const RegionSelect: React.FC<RegionSelectProps> = ({ user, onComplete }) => {
               }`}
             >
               <div className="relative z-10">
-                <div className="text-7xl mb-4 drop-shadow-lg">{region.flag}</div>
+                <div className="text-6xl mb-4 drop-shadow-lg">{getRegionCollage(region.code)}</div>
                 <h3 className="text-lg font-bold text-gray-900 mb-1">{region.name}</h3>
                 <p className="text-xs text-gray-600">{region.countries}</p>
               </div>
@@ -84,9 +97,9 @@ const RegionSelect: React.FC<RegionSelectProps> = ({ user, onComplete }) => {
           <div className="flex items-start space-x-3">
             <MapPin className="w-6 h-6 text-blue-600 mt-1 flex-shrink-0" />
             <div className="text-left">
-              <h4 className="font-bold text-blue-900 mb-2">🔒 Region Selection</h4>
+              <h4 className="font-bold text-blue-900 mb-2">📍 Compare with Regional Peers</h4>
               <p className="text-sm text-blue-800">
-                Your selected region will be locked and used for peer comparison. You can still view all regional leaderboards, but your primary ranking will always be compared against your region.
+                Your performance will be compared with other candidates in your selected region. This helps you benchmark your skills against candidates in your geography.
               </p>
             </div>
           </div>

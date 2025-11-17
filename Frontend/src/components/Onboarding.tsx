@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Briefcase, MapPin, ArrowRight, Star, TrendingUp, Users, Globe } from 'lucide-react';
+import { User, Briefcase, ArrowRight, Star, TrendingUp, Users, Globe } from 'lucide-react';
 import { User as UserType } from '../types';
 
 interface OnboardingProps {
@@ -139,9 +139,15 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
             <input
               type="text"
               value={formData.currentRole}
-              onChange={(e) => setFormData(prev => ({ ...prev, currentRole: e.target.value }))}
+              onChange={(e) => {
+                // Allow only letters, spaces, commas, parentheses, and hyphens
+                const value = e.target.value;
+                if (/^[a-zA-Z\s,()/-]*$/.test(value) || value === '') {
+                  setFormData(prev => ({ ...prev, currentRole: value }));
+                }
+              }}
               className="w-full px-4 md:px-6 py-3 md:py-4 border-2 border-gray-300 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all text-base md:text-lg"
-              placeholder="e.g., Senior Product Manager, APM, Software Engineer transitioning to PM"
+              placeholder="e.g., Senior Product Manager, APM, Software Engineer"
             />
             
             <div className="mt-4 p-3 md:p-4 bg-blue-50 rounded-xl border border-blue-200">
@@ -151,17 +157,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
                 <span>• PM (Product Manager)</span>
                 <span>• Senior PM</span>
                 <span>• Principle/Director PM</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Region Info Box - Since region is already locked from RegionSelect */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-4 md:p-6 border border-blue-200 mb-8">
-            <div className="flex items-start space-x-3">
-              <MapPin className="w-5 h-5 md:w-6 md:h-6 text-blue-600 mt-1 flex-shrink-0" />
-              <div>
-                <h4 className="font-bold text-blue-900 mb-2 text-sm md:text-base">🔒 Your Region is Locked</h4>
-                <p className="text-xs md:text-sm text-blue-800">Your region has been set and locked for peer comparison. You'll be compared with regional peers on the leaderboard.</p>
               </div>
             </div>
           </div>

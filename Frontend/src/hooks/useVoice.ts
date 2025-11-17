@@ -115,13 +115,15 @@ export const useVoice = () => {
   }, []);
 
   const clearTranscript = useCallback(() => {
+    // Reset all transcript buffers completely
     finalTranscriptRef.current = '';
     pendingTranscriptRef.current = '';
     if (updateTimerRef.current) {
       window.clearTimeout(updateTimerRef.current as any);
       updateTimerRef.current = null;
     }
-    setVoiceState(prev => ({ ...prev, transcript: '' }));
+    // Reset voice state with empty transcript
+    setVoiceState(prev => ({ ...prev, transcript: '', confidence: 0 }));
   }, []);
 
   return {

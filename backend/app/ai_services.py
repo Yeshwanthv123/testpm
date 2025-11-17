@@ -29,20 +29,31 @@ except Exception as e:
     VALID_LEVELS = ["Strategic"]
 
 SYSTEM_PROMPT = f"""
-You are an expert HR assistant. Read the following job description (JD)
-and extract these three things:
+You are an expert HR and Product Management recruiter. Read the job description carefully and extract these THREE pieces of information:
 
-1️⃣ company_name — must be one of these or closest match:
+1️⃣ company_name — The company hiring for this role. Match it to one of these companies if mentioned:
 {VALID_COMPANIES[:80]}
+If the company is NOT in the list above or not clearly mentioned, respond with "Unknown Company".
 
-2️⃣ years_of_experience — infer from JD and return one of:
-   "0-2", "3-5", "6-10", "10+"
+2️⃣ years_of_experience — Infer the required years of experience from the JD. Return EXACTLY ONE of:
+   "0-2" (entry level, APM, junior PM)
+   "3-5" (mid-level PM)
+   "6-10" (senior PM)
+   "10+" (principal/director level)
+Look for keywords like "years", "experience", "senior", "junior", "lead", "direct". If not found, default to "6-10".
 
-3️⃣ level — must be one of these (job category/topic):
+3️⃣ level — The job category or seniority level. Match to one of these:
 {VALID_LEVELS}
+Common matches: "Strategic" (if product strategy mentioned), or relevant category.
 
-Respond ONLY in valid JSON:
-{{"company_name": "...", "years_of_experience": "...", "level": "..."}}.
+IMPORTANT RULES:
+- Return ONLY valid JSON, no extra text before or after
+- All values must be EXACTLY as shown in the examples
+- If unsure, use defaults: company="Unknown Company", years="6-10", level="Strategic"
+- Do NOT make up companies or experience levels
+
+Example valid response:
+{{"company_name": "Google", "years_of_experience": "6-10", "level": "Strategic"}}
 """
 
 class AIService:
@@ -952,6 +963,14 @@ class AIService:
             return []
 
     async def extract_details_from_jd(self, jd_text: str) -> dict:
+        """
+        Extract company, years of experience, and level from JD.
+        
+        Returns:
+        - If company found in CSV and years match: exact company questions
+        - If company not found: 8 random questions from multiple companies with matching years
+        - If years not found in JD: default to "6-10" and provide diverse questions
+        """
         try:
             full_prompt = SYSTEM_PROMPT + "\n\n" + jd_text
             raw = self._query_ollama(full_prompt)
@@ -961,17 +980,37 @@ class AIService:
                 start, end = raw.find("{"), raw.rfind("}") + 1
                 data = json.loads(raw[start:end]) if start != -1 else {}
 
-            company = self._find_best_match(data.get("company_name", ""), VALID_COMPANIES)
-            years_of_experience = data.get("years_of_experience", "6-10")
-            # Normalize years_of_experience to standard buckets
+            # Extract and normalize company
+            company_name = data.get("company_name", "").strip()
+            extracted_company = self._find_best_match(company_name, VALID_COMPANIES)
+            
+            # Extract and normalize years of experience
+            years_of_experience = data.get("years_of_experience", "6-10").strip()
             if years_of_experience not in ("0-2", "3-5", "6-10", "10+"):
                 years_of_experience = "6-10"  # Default
+            
+            # Extract and normalize level
             level = self._find_best_match(data.get("level", ""), VALID_LEVELS)
 
-            return {"company_name": company, "years_of_experience": years_of_experience, "level": level}
+            # Determine if company was actually found in our database
+            company_found = extracted_company != "Unknown Company"
+            
+            return {
+                "company_name": extracted_company,
+                "years_of_experience": years_of_experience,
+                "level": level,
+                "company_found": company_found,  # Flag to indicate if exact match exists
+                "original_company": company_name  # Store original for logging
+            }
         except Exception as e:
-            print(f"[AIService Error] {e}")
-            return {"company_name": "Unknown Company", "years_of_experience": "6-10", "level": "Strategic"}
+            print(f"[AIService extract_details_from_jd error] {e}")
+            return {
+                "company_name": "Unknown Company",
+                "years_of_experience": "6-10",
+                "level": "Strategic",
+                "company_found": False,
+                "original_company": ""
+            }
 
 ai_service = AIService()
 

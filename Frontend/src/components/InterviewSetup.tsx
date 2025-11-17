@@ -227,12 +227,12 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
   const generalPMType = interviewTypes.find(type => type.isGeneral);
   // Extract company and role from a pasted Job Description (JD).
   // Goal: return only the company name and a normalized role token like 'PM' or 'Senior PM'.
-  function extractCompanyAndRole(jdText: string): { company?: string; role?: string } {
-    if (!jdText) return {};
+  function extractCompanyAndRole(jdText: string): { company?: string; role?: string; experience?: string } {
+    if (!jdText || jdText.length < 10) return {};
     const s = jdText;
 
     // 1) Company: look for explicit 'Company:' line
-    const companyMatch = s.match(/Company\s*[:\-]\s*(.+)/i);
+    const companyMatch = s.match(/Company\s*[:\-]\s*([^\n\r]+)/i);
     let company = companyMatch ? companyMatch[1].trim() : undefined;
 
     // 2) If not found, try to match known companies from the list
@@ -246,11 +246,47 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
       }
     }
 
-    // 3) Role: look for 'Job Title' or 'Title' lines
-    const titleMatch = s.match(/Job Title\s*[:\-]\s*(.+)/i) || s.match(/Title\s*[:\-]\s*(.+)/i);
+    // 3) If still not found, try to extract company from first line or "at [CompanyName]" pattern
+    if (!company) {
+      const atMatch = s.match(/\bat\s+([A-Z][A-Za-z\s&]+?)\s*[,.\n]/);
+      if (atMatch) {
+        company = atMatch[1].trim();
+      }
+    }
+
+    // 4) If still not found, try extracting from common job posting patterns
+    if (!company) {
+      const patterns = [
+        /(?:position|role|job)\s+at\s+([A-Z][A-Za-z\s&]+?)(?:\s*-|\s*\n|$)/i,
+        /([A-Z][A-Za-z\s&]+?)\s+(?:is hiring|is looking for|seeks|wants)\s+/i,
+      ];
+      for (const pattern of patterns) {
+        const match = s.match(pattern);
+        if (match) {
+          company = match[1].trim();
+          break;
+        }
+      }
+    }
+
+    // 5) Extract experience level from JD
+    let experience: string | undefined;
+    const lowered = s.toLowerCase();
+    if (lowered.includes('10+') || lowered.includes('10 years')) {
+      experience = '10+';
+    } else if (lowered.includes('senior') || /[5-9]\s*-\s*10|6\s*to\s*10/.test(lowered)) {
+      experience = '6-10';
+    } else if (/[3-5]\s*-\s*[5-8]|3\s*to\s*5|mid.?level|mid-level/.test(lowered)) {
+      experience = '3-5';
+    } else if (/[0-2]\s*-\s*3|0\s*to\s*2|entry.?level|junior|associate|apm/i.test(lowered)) {
+      experience = '0-2';
+    }
+
+    // 6) Role: look for 'Job Title' or 'Title' lines
+    const titleMatch = s.match(/Job Title\s*[:\-]\s*([^\n]+)/i) || s.match(/Title\s*[:\-]\s*([^\n]+)/i);
     let rawRole = titleMatch ? titleMatch[1].trim() : undefined;
 
-    // 4) If not found, attempt to find common role phrases
+    // 7) If not found, attempt to find common role phrases
     if (!rawRole) {
       const roleCandidates = [
         /senior\s+product\s+manager/i,
@@ -282,7 +318,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
       else if (roleText.includes('product') || roleText.includes('pm')) role = 'PM';
     }
 
-    return { company, role };
+    return { company, role, experience };
   }
 
   // Helper function to get flag emoji for region
@@ -322,13 +358,16 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
     setUseJobDescription(true);
 
     try {
-      // Extract company from the pasted JD
-      const { company: extractedCompany } = extractCompanyAndRole(jobDescription);
+      // Extract company and experience from the pasted JD
+      const { company: extractedCompany, experience: extractedExp } = extractCompanyAndRole(jobDescription);
+      
+      // Use extracted experience level if available, otherwise use user's experience
+      const experienceToUse = extractedExp || user.experience;
       const derivedCompany = extractedCompany || selectedCompany || 'Generic';
 
       const apiResult = await fetchInterviewQuestions({
         company: derivedCompany,
-        experience: user.experience,
+        experience: experienceToUse,
       });
 
   let questions = (apiResult as unknown) as Question[];
@@ -337,7 +376,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
       const startType = {
         ...(chosenType ?? interviewTypes[0]),
         company: derivedCompany, // Set the extracted/selected company
-        name: derivedCompany === 'Generic' ? 'PM Interview' : derivedCompany
+        name: derivedCompany === 'Generic' ? `PM Interview - ${experienceToUse} exp` : derivedCompany
       };
       onStartInterview(startType as any, questions, jobDescription);
 
@@ -408,16 +447,22 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
         }
 
         if (ext === 'docx') {
-          // DOCX parsing using mammoth
-          const mammothPkg = 'mammoth';
-          // @ts-ignore
-          const mammoth = await import(/* @vite-ignore */ mammothPkg);
-          const arrayBuffer = await file.arrayBuffer();
-          const result = await mammoth.extractRawText({ arrayBuffer });
-          const text = result.value || '';
-          setJobDescription(text);
-          setUseJobDescription(true);
-          return;
+          // DOCX parsing using mammoth (now a main dependency)
+          try {
+            // @ts-ignore - mammoth is now installed as a regular dependency
+            const mammoth = await import('mammoth');
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            const text = (result.value || '').trim();
+            if (text && text.length > 10) {
+              setJobDescription(text);
+              setUseJobDescription(true);
+              return;
+            }
+          } catch (err) {
+            console.warn('Mammoth DOCX parsing failed:', err);
+            // Fall through to text reading
+          }
         }
 
         // Fallback: read as text for .txt and others
@@ -483,7 +528,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
     }
   };
 
-  const canStartInterview = selectedType && (!useJobDescription || jobDescription.trim()) && !isFetchingQuestions;
+  const canStartInterview = selectedType && (!useJobDescription || jobDescription.trim()) && !isFetchingQuestions && (jobDescription.split(/\s+/).length <= 200 || !useJobDescription);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
@@ -654,12 +699,36 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
 
             {/* Text Area */}
             <div className="mb-4 md:mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-medium text-gray-700">Job Description</label>
+                {(() => {
+                  const wordCount = jobDescription.split(/\s+/).filter(w => w.length > 0).length;
+                  const isExceeded = wordCount > 200;
+                  return (
+                    <span className={`text-xs ${isExceeded ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                      {wordCount} / 200 words
+                    </span>
+                  );
+                })()}
+              </div>
               <textarea
                 value={jobDescription}
-                onChange={(e) => setJobDescription(e.target.value)}
+                onChange={(e) => setJobDescription(e.target.value.slice(0, 2000))}
                 placeholder="Paste your JD here, or drag & drop a file…"
-                className="w-full h-32 md:h-48 p-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-gray-900 placeholder-gray-500 text-sm md:text-base"
+                className={(() => {
+                  const wordCount = jobDescription.split(/\s+/).filter(w => w.length > 0).length;
+                  const isExceeded = wordCount > 200;
+                  const baseClass = 'w-full h-32 md:h-48 p-4 border rounded-xl focus:ring-2 focus:border-transparent resize-none text-gray-900 placeholder-gray-500 text-sm md:text-base';
+                  const stateClass = isExceeded ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-purple-500';
+                  return `${baseClass} ${stateClass}`;
+                })()}
               />
+              {(() => {
+                const wordCount = jobDescription.split(/\s+/).filter(w => w.length > 0).length;
+                return wordCount > 200 ? (
+                  <p className="text-xs text-red-600 mt-2">⚠️ Job description should be 200 words or less for optimal AI processing (current: {wordCount} words)</p>
+                ) : null;
+              })()}
             </div>
 
             {/* AI Enhancement Info */}
@@ -686,7 +755,11 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
               <button
-                onClick={() => setJobDescription('')}
+                onClick={() => {
+                  setJobDescription('');
+                  setJdFile(null);
+                  setUseJobDescription(false);
+                }}
                 className="flex-1 px-4 py-3 border-2 border-purple-300 text-purple-700 rounded-xl hover:bg-purple-50 transition-all font-medium text-sm md:text-base"
               >
                 Clear JD
@@ -707,9 +780,34 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
           <div id="interview-summary" className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 border border-gray-100">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-6 md:mb-8">
               <div className="flex-1 mb-6 lg:mb-0">
-                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
-                  Ready to start your Product Management interview?
-                </h2>
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
+                    Ready to start your Product Management interview?
+                  </h2>
+                  {useJobDescription && jobDescription && (
+                    <div className="mb-4 space-y-2">
+                      {extractCompanyAndRole(jobDescription).company && (
+                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <p className="text-sm font-semibold text-blue-900">
+                            🏢 Company: <span className="text-lg text-blue-600">{extractCompanyAndRole(jobDescription).company}</span>
+                          </p>
+                        </div>
+                      )}
+                      {extractCompanyAndRole(jobDescription).experience && (
+                        <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <p className="text-sm font-semibold text-purple-900">
+                            📊 Experience Level: <span className="text-lg text-purple-600">{extractCompanyAndRole(jobDescription).experience} years</span>
+                          </p>
+                        </div>
+                      )}
+                      {!extractCompanyAndRole(jobDescription).company && !extractCompanyAndRole(jobDescription).experience && (
+                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-sm text-amber-800">⚠️ Could not extract company or experience level from JD. Using your profile settings.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <p className="text-base md:text-lg text-gray-600 mb-4">
                   This interview will take approximately {selectedType.duration} minutes and cover {selectedType.questionCount} questions.
                 </p>
@@ -717,7 +815,7 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
                   <div className="flex items-center space-x-2 mb-4">
                     <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
                     <span className="text-purple-700 font-medium text-sm md:text-base">
-                      Enhanced with AI-generated questions from your job description or your dream Company
+                      Enhanced with AI-generated questions from your job description
                     </span>
                   </div>
                 )}
@@ -778,6 +876,9 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
               </button>
               {!canStartInterview && useJobDescription && !jobDescription.trim() && (
                 <p className="text-red-600 text-sm mt-3">Please provide a job description to continue</p>
+              )}
+              {!canStartInterview && useJobDescription && jobDescription.split(/\s+/).length > 200 && (
+                <p className="text-red-600 text-sm mt-3">Job description exceeds 200 words. Please reduce by {jobDescription.split(/\s+/).filter(w => w.length > 0).length - 200} words.</p>
               )}
             </div>
           </div>

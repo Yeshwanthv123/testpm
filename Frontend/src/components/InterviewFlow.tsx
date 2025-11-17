@@ -43,31 +43,37 @@ const COMPANY_LOGOS: Record<string, string> = {
 };
 
 const getCompanyLogo = (company: string): string => {
-  return COMPANY_LOGOS[company] || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjNjU2NUY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxNiIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5DPC90ZXh0Pjwvc3ZnPg==';
+  // First, try to get favicon from COMPANY_LOGOS
+  const logo = COMPANY_LOGOS[company];
+  if (logo) return logo;
+  
+  // For Generic or Unknown companies, return a generic company placeholder SVG
+  const companyInitial = (company?.charAt(0) || 'C').toUpperCase();
+  return `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjRkY5NTAwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnRTaXplPSIxOCIgZm9udFdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj4ke2NvbXBhbnlJbml0aWFsfTwvdGV4dD48L3N2Zz4=`;
 };
 
 function deriveSkills(category?: string, difficulty?: string): string[] {
   const cat = (category || '').toLowerCase();
   const map: Record<string, string[]> = {
-    strategic: ['Strategy', 'Prioritization', 'Business Acumen'],
-    strategy: ['Strategy', 'Prioritization', 'Business Acumen'],
-    leadership: ['Leadership', 'Stakeholder Mgmt', 'Communication'],
-    metrics: ['Metrics', 'Analysis', 'Decision-making'],
-    'product health': ['Metrics', 'Product Health', 'Diagnostics'],
-    growth: ['Growth', 'Experimentation', 'Retention'],
-    'a/b testing': ['Experimentation', 'Hypothesis Design', 'Analysis'],
-    'customer obsession': ['Customer Empathy', 'Voice of Customer', 'Execution'],
-    foundation: ['Execution', 'Ownership', 'Collaboration'],
-    behavioral: ['Communication', 'Leadership', 'Stakeholder Mgmt'],
-    technical: ['Technical Depth', 'System Design', 'Trade-offs'],
-    'system design': ['System Design', 'Scalability', 'Trade-offs'],
-    'product sense': ['Product Sense', 'User Empathy', 'Prioritization'],
-    execution: ['Execution', 'Project Mgmt', 'Cross-functional'],
-    launch: ['Go-to-Market', 'Execution', 'Stakeholder Mgmt'],
-    'go-to-market': ['Go-to-Market', 'Positioning', 'Execution'],
-    pricing: ['Pricing', 'Market Analysis', 'Trade-offs'],
-    'success criteria': ['Metrics', 'Success Criteria', 'Decision-making'],
-    prioritization: ['Prioritization', 'Trade-offs', 'Decision-making'],
+    strategic: ['Product Strategy', 'Product Execution', 'Analytical Thinking'],
+    strategy: ['Product Strategy', 'Product Execution', 'Analytical Thinking'],
+    leadership: ['Leadership & Ownership', 'Communication', 'Analytical Thinking'],
+    metrics: ['Analytical Thinking', 'Leadership & Ownership', 'Communication'],
+    'product health': ['Analytical Thinking', 'Product Execution', 'Leadership & Ownership'],
+    growth: ['Product Strategy', 'Product Execution', 'Analytical Thinking'],
+    'a/b testing': ['Analytical Thinking', 'Product Execution', 'Leadership & Ownership'],
+    'customer obsession': ['Product Execution', 'Communication', 'Leadership & Ownership'],
+    foundation: ['Product Execution', 'Leadership & Ownership', 'Communication'],
+    behavioral: ['Communication', 'Leadership & Ownership', 'Product Strategy'],
+    technical: ['Analytical Thinking', 'Product Execution', 'Product Strategy'],
+    'system design': ['Product Execution', 'Analytical Thinking', 'Product Strategy'],
+    'product sense': ['Product Strategy', 'Communication', 'Product Execution'],
+    execution: ['Product Execution', 'Product Strategy', 'Leadership & Ownership'],
+    launch: ['Product Execution', 'Leadership & Ownership', 'Communication'],
+    'go-to-market': ['Product Strategy', 'Communication', 'Product Execution'],
+    pricing: ['Analytical Thinking', 'Product Strategy', 'Product Execution'],
+    'success criteria': ['Analytical Thinking', 'Product Execution', 'Leadership & Ownership'],
+    prioritization: ['Product Strategy', 'Analytical Thinking', 'Leadership & Ownership'],
   };
 
   let picked: string[] | undefined;
@@ -77,11 +83,11 @@ function deriveSkills(category?: string, difficulty?: string): string[] {
       break;
     }
   }
-  if (!picked) picked = ['Product Sense', 'Execution'];
+  if (!picked) picked = ['Product Strategy', 'Product Execution', 'Analytical Thinking'];
 
   const diff = (difficulty || '').toLowerCase();
   if (diff === 'easy') return picked.slice(0, 2);
-  if (diff === 'hard') return Array.from(new Set([...picked, 'Depth', 'Edge Cases']));
+  if (diff === 'hard') return Array.from(new Set([...picked, 'Communication', 'Leadership & Ownership']));
   return picked;
 }
 
@@ -470,7 +476,16 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
 
           <textarea
             value={currentAnswer}
-            onChange={(e) => setCurrentAnswer(e.target.value)}
+            onChange={(e) => {
+              // Calculate tokens after trimming whitespace
+              const trimmedText = e.target.value.trim();
+              const tokens = Math.ceil(trimmedText.length / 4);
+              
+              // Only allow up to 300 tokens
+              if (tokens <= 300) {
+                setCurrentAnswer(e.target.value);
+              }
+            }}
             placeholder="Start typing your answer..."
             className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 font-mono text-sm"
           />
@@ -481,7 +496,9 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
               <span>•</span>
               <span>{currentAnswer.split(' ').filter((w) => w).length} words</span>
               <span>•</span>
-              <span>{Math.ceil(currentAnswer.length / 4)} tokens</span>
+              <span className={Math.ceil(currentAnswer.trim().length / 4) >= 300 ? 'text-red-600 font-bold' : ''}>
+                {Math.ceil(currentAnswer.trim().length / 4)} / 300 tokens
+              </span>
             </div>
             <button
               onClick={handleNextQuestion}

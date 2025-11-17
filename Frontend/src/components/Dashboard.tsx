@@ -208,7 +208,61 @@ const Dashboard: React.FC<DashboardProps> = ({ result, onRetakeInterview }) => {
           <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-lg p-8">
               <h3 className="text-2xl font-bold mb-4">Key Strengths</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">{detailedInsights.strengths.map((s,i)=>(<div key={i} className="p-6 bg-green-50 rounded-xl"><h4 className="font-semibold">{s.title}</h4><p className="text-sm mt-2">{s.description}</p></div>))}</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {result.perQuestionEvaluations && result.perQuestionEvaluations.length > 0 ? (
+                  // Dynamic strengths from AI evaluation
+                  (() => {
+                    const allStrengths: { title: string; description: string }[] = [];
+                    const strengthCounts: Record<string, number> = {};
+                    
+                    result.perQuestionEvaluations.forEach((pq) => {
+                      if (pq.strengths && Array.isArray(pq.strengths)) {
+                        pq.strengths.forEach((s) => {
+                          strengthCounts[s] = (strengthCounts[s] || 0) + 1;
+                        });
+                      }
+                    });
+                    
+                    // Get top 3 strengths by frequency
+                    const topStrengths = Object.entries(strengthCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 3)
+                      .map(([strength]) => strength);
+                    
+                    // Map strengths to categories
+                    const strengthMap: Record<string, { title: string; description: string }> = {
+                      'Strategic Framework Application': { title: 'Strategic Framework Application', description: 'Consistently applied structured frameworks and strategic thinking across answers.' },
+                      'Execution Excellence': { title: 'Execution Excellence', description: 'Strong ability to break down problems into actionable steps with clear execution plans.' },
+                      'Data-Driven Decision Making': { title: 'Analytical Thinking', description: 'Consistently referenced metrics and data to support recommendations and decisions.' },
+                      'Communication': { title: 'Communication Skills', description: 'Clear and articulate explanations that demonstrate strong communication abilities.' },
+                      'Leadership & Ownership': { title: 'Leadership & Ownership', description: 'Demonstrated ownership mentality and ability to lead cross-functional initiatives.' },
+                    };
+                    
+                    const displayStrengths = topStrengths.length > 0 
+                      ? topStrengths.map(s => strengthMap[s] || { title: s, description: `Strong performance in ${s.toLowerCase()}` })
+                      : [
+                          { title: 'Product Strategy', description: 'Strong strategic thinking and product vision.' },
+                          { title: 'Execution Excellence', description: 'Excellent ability to execute and deliver results.' },
+                          { title: 'Analytical Thinking', description: 'Data-driven and analytical approach to problem solving.' }
+                        ];
+                    
+                    return displayStrengths.map((s, i) => (
+                      <div key={i} className="p-6 bg-green-50 rounded-xl border border-green-200">
+                        <h4 className="font-semibold text-green-900">{s.title}</h4>
+                        <p className="text-sm mt-2 text-green-700">{s.description}</p>
+                      </div>
+                    ));
+                  })()
+                ) : (
+                  // Fallback static strengths if no evaluations
+                  detailedInsights.strengths.map((s, i) => (
+                    <div key={i} className="p-6 bg-green-50 rounded-xl border border-green-200">
+                      <h4 className="font-semibold text-green-900">{s.title}</h4>
+                      <p className="text-sm mt-2 text-green-700">{s.description}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
             {/* Per-question AI evaluations (if available) */}
             {result.perQuestionEvaluations && result.perQuestionEvaluations.length > 0 && (
