@@ -49,6 +49,11 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
       alert('Please select your experience level');
       return;
     }
+    
+    if (!formData.currentRole || formData.currentRole.trim() === '') {
+      alert('Please enter your current role');
+      return;
+    }
 
     const updatedUser: UserType = {
       ...user,
@@ -57,13 +62,13 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
 
     // Add currentRole if it exists in the form
     if (formData.currentRole) {
-      (updatedUser as any).currentRole = formData.currentRole;
+      (updatedUser as any).currentRole = formData.currentRole.trim();
     }
 
     onComplete(updatedUser);
   };
 
-  const canProceed = formData.experience;
+  const canProceed = formData.experience && formData.currentRole && formData.currentRole.trim() !== '';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
@@ -140,15 +145,23 @@ const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
               type="text"
               value={formData.currentRole}
               onChange={(e) => {
-                // Allow only letters, spaces, commas, parentheses, and hyphens
+                // Allow ONLY English letters, numbers, spaces, hyphens, parentheses, commas, periods, and ampersands
+                // Reject all other characters including non-English characters
                 const value = e.target.value;
-                if (/^[a-zA-Z\s,()/-]*$/.test(value) || value === '') {
+                const isValid = /^[a-zA-Z0-9\s,().\-&/]*$/.test(value);
+                if (isValid || value === '') {
                   setFormData(prev => ({ ...prev, currentRole: value }));
                 }
               }}
-              className="w-full px-4 md:px-6 py-3 md:py-4 border-2 border-gray-300 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all text-base md:text-lg"
+              maxLength={100}
+              className={`w-full px-4 md:px-6 py-3 md:py-4 border-2 rounded-2xl focus:ring-2 focus:border-transparent transition-all text-base md:text-lg ${
+                formData.currentRole.trim() === '' ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-orange-500'
+              }`}
               placeholder="e.g., Senior Product Manager, APM, Software Engineer"
             />
+            {formData.currentRole.trim() === '' && (
+              <p className="text-red-600 text-sm mt-2">Role is required</p>
+            )}
             
             <div className="mt-4 p-3 md:p-4 bg-blue-50 rounded-xl border border-blue-200">
               <h4 className="font-medium text-blue-900 mb-2 text-sm md:text-base">💡 Examples of roles:</h4>
