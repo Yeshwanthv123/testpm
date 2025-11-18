@@ -828,9 +828,6 @@ const InterviewSetup: React.FC<InterviewSetupProps> = ({ user, onStartInterview 
               {!canStartInterview && useJobDescription && !jobDescription.trim() && (
                 <p className="text-red-600 text-sm mt-3">Please provide a job description to continue</p>
               )}
-              {!canStartInterview && useJobDescription && jobDescription.split(/\s+/).length > 200 && (
-                <p className="text-red-600 text-sm mt-3">Job description exceeds 200 words. Please reduce by {jobDescription.split(/\s+/).filter(w => w.length > 0).length - 200} words.</p>
-              )}
             </div>
           </div>
         )}

@@ -23,6 +23,11 @@ export interface Question {
   complexity?: string | null;
   experience_level?: string | null;
   years_of_experience?: string | null;
+  _interview_metadata?: {
+    company_name?: string | null;
+    years_of_experience?: string | null;
+    level?: string | null;
+  };
   created_at?: string | null | Date;
   [key: string]: any;
 }

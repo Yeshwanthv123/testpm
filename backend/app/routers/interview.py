@@ -515,6 +515,10 @@ def evaluate_answers(
     and the user's answer), generate an ideal/model answer and evaluate the user's
     answer against it. Returns per-question evaluation data and an overall score.
     """
+    print(f"[EvaluateAnswers] ENDPOINT CALLED - payload object: {payload}")
+    print(f"[EvaluateAnswers] payload.interview_metadata: {payload.interview_metadata}")
+    print(f"[EvaluateAnswers] payload.interview_metadata type: {type(payload.interview_metadata)}")
+    
     try:
         items = payload.items or []
         results = []
@@ -643,13 +647,25 @@ def evaluate_answers(
 
         overall = int(round((total_score / count))) if count > 0 else 0
 
-        # Extract company from payload if available (for JD-based interviews)
+        # Extract company from metadata (for JD-based interviews)
         interview_company = None
         if payload.interview_metadata and isinstance(payload.interview_metadata, dict):
             interview_company = payload.interview_metadata.get("company_name")
-            print(f"[EvaluateAnswers] interview_metadata found, company_name='{interview_company}'")
-        else:
-            print(f"[EvaluateAnswers] No interview_metadata in payload, will try to extract from questions")
+            if interview_company:
+                print(f"[EvaluateAnswers] ✓ Using company from interview_metadata: '{interview_company}'")
+        
+        # Fallback: Check if first question has _interview_metadata (from JD extraction)
+        if not interview_company and items:
+            first_item = items[0]
+            if first_item and first_item.question:
+                q_obj = first_item.question
+                # Check if this question has embedded interview metadata
+                if isinstance(q_obj, dict):
+                    q_metadata = q_obj.get("_interview_metadata")
+                    if q_metadata and isinstance(q_metadata, dict):
+                        interview_company = q_metadata.get("company_name")
+                        if interview_company:
+                            print(f"[EvaluateAnswers] ✓ Extracted company from first question's _interview_metadata: '{interview_company}'")
 
         # Persist evaluation to DB (best-effort)
         try:

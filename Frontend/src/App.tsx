@@ -235,6 +235,7 @@ function App() {
           }
         }
 
+        console.log('[handleInterviewComplete] Sending request with interview_metadata:', interviewMetadata);
         const evalResp = await fetch(`${API_BASE}/api/interview/evaluate-answers`, {
           method: 'POST',
           headers: {

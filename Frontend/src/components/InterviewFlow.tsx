@@ -454,8 +454,8 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
               const trimmedText = e.target.value.trim();
               const tokens = Math.ceil(trimmedText.length / 4);
               
-              // Only allow up to 300 tokens
-              if (tokens <= 300) {
+              // Only allow up to 200 tokens
+              if (tokens <= 200) {
                 setCurrentAnswer(e.target.value);
               }
             }}
@@ -469,8 +469,8 @@ const InterviewFlow: React.FC<InterviewFlowProps> = ({
               <span>•</span>
               <span>{currentAnswer.split(' ').filter((w) => w).length} words</span>
               <span>•</span>
-              <span className={Math.ceil(currentAnswer.trim().length / 4) >= 300 ? 'text-red-600 font-bold' : ''}>
-                {Math.ceil(currentAnswer.trim().length / 4)} / 300 tokens
+              <span className={Math.ceil(currentAnswer.trim().length / 4) >= 200 ? 'text-red-600 font-bold' : ''}>
+                {Math.ceil(currentAnswer.trim().length / 4)} / 200 tokens
               </span>
             </div>
             <button
